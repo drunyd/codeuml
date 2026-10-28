@@ -28,6 +28,7 @@ fn node(id: &str, name: &str, kind: TypeKind) -> DiagramNode {
         visibility: Visibility::Public,
         alias_of: None,
         members: Vec::new(),
+        extra_lines: Vec::new(),
     }
 }
 

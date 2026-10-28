@@ -315,6 +315,7 @@ impl<'a> ProjectionBuilder<'a> {
                 method_count: declaration.methods.len(),
                 variant_count: declaration.variants.len(),
                 members: node_members(declaration),
+                extra_lines: Vec::new(),
             })
             .collect();
         nodes.sort_by(|left, right| {

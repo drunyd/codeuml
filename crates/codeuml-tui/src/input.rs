@@ -50,6 +50,8 @@ const SOURCE: &[Binding] = &[
 ];
 const ARCHITECTURE: &[Binding] = &[
     binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(KeyCode::Char('v'), Action::OpenArchitectureDiagram, false),
+    binding(KeyCode::Char('t'), Action::OpenTypeBrowser, false),
     binding(KeyCode::Up, Action::NavigateUp, false),
     binding(KeyCode::Char('k'), Action::NavigateUp, false),
     binding(KeyCode::Down, Action::NavigateDown, false),
@@ -69,6 +71,37 @@ const ARCHITECTURE: &[Binding] = &[
     binding(KeyCode::Char('d'), Action::OpenDiagnostics, false),
     binding(KeyCode::Char('?'), Action::OpenHelp, false),
     binding(KeyCode::Char('q'), Action::Quit, false),
+];
+const ARCHITECTURE_DIAGRAM: &[Binding] = &[
+    binding(KeyCode::Up, Action::NavigateUp, false),
+    binding(KeyCode::Char('k'), Action::NavigateUp, false),
+    binding(KeyCode::Down, Action::NavigateDown, false),
+    binding(KeyCode::Char('j'), Action::NavigateDown, false),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Enter, Action::Confirm, true),
+    binding(KeyCode::Right, Action::Descend, false),
+    binding(KeyCode::Char('l'), Action::Descend, false),
+    binding(KeyCode::Left, Action::Ascend, false),
+    binding(KeyCode::Char('h'), Action::Ascend, false),
+    binding(KeyCode::Char('f'), Action::ToggleArchitectureFull, false),
+    binding(KeyCode::Char('t'), Action::OpenTypeBrowser, false),
+    binding(KeyCode::Char('c'), Action::CenterDiagram, false),
+    binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('b'), Action::Cancel, true),
+    binding(KeyCode::Char('v'), Action::Cancel, true),
+    binding(KeyCode::Char('d'), Action::OpenDiagnostics, false),
+    binding(KeyCode::Char('?'), Action::OpenHelp, false),
+    binding(KeyCode::Char('q'), Action::Quit, false),
+];
+const ARCHITECTURE_DIAGRAM_CONTROL: &[(KeyCode, Action)] = &[
+    (KeyCode::Char('h'), Action::PanLeft),
+    (KeyCode::Char('j'), Action::PanDown),
+    (KeyCode::Char('k'), Action::PanUp),
+    (KeyCode::Char('l'), Action::PanRight),
 ];
 const DIAGRAM: &[Binding] = &[
     binding(KeyCode::Up, Action::PanUp, false),
@@ -161,6 +194,7 @@ fn action_for_mode(mode: Mode, code: KeyCode, control: bool) -> Option<Action> {
         Mode::Browse => find_binding(code, control, BROWSE),
         Mode::Source => find_binding(code, control, SOURCE),
         Mode::Architecture => find_binding(code, control, ARCHITECTURE),
+        Mode::ArchitectureDiagram => find_binding(code, control, ARCHITECTURE_DIAGRAM),
         Mode::Diagram => find_binding(code, control, DIAGRAM),
         Mode::Diagnostics => find_binding(code, control, DIAGNOSTICS),
         Mode::ScopeDialog => find_binding(code, control, SCOPE_DIALOG),
@@ -174,6 +208,9 @@ fn control_action(mode: Mode, code: KeyCode, control: bool) -> Option<Action> {
     }
     if mode == Mode::Browse && control {
         return find_control_binding(code, BROWSE_CONTROL);
+    }
+    if mode == Mode::ArchitectureDiagram && control {
+        return find_control_binding(code, ARCHITECTURE_DIAGRAM_CONTROL);
     }
     None
 }
@@ -262,6 +299,7 @@ mod tests {
         for mode in [
             Mode::Browse,
             Mode::Architecture,
+            Mode::ArchitectureDiagram,
             Mode::Source,
             Mode::Diagram,
             Mode::Search,
@@ -398,8 +436,57 @@ mod tests {
     }
 
     #[test]
+    fn architecture_diagram_keys_select_zoom_full_and_pan() {
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Char('v'))),
+            Some(Action::OpenArchitectureDiagram)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('j'))),
+            Some(Action::NavigateDown)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('l'))),
+            Some(Action::Descend)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('h'))),
+            Some(Action::Ascend)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('f'))),
+            Some(Action::ToggleArchitectureFull)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('t'))),
+            Some(Action::OpenTypeBrowser)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Char('t'))),
+            Some(Action::OpenTypeBrowser)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('v'))),
+            Some(Action::Cancel)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, control('l')),
+            Some(Action::PanRight)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::PageDown)),
+            Some(Action::PageDown)
+        );
+    }
+
+    #[test]
     fn source_and_back_keys_are_available_in_the_right_modes() {
-        for mode in [Mode::Browse, Mode::Architecture, Mode::Diagram] {
+        for mode in [
+            Mode::Browse,
+            Mode::Architecture,
+            Mode::ArchitectureDiagram,
+            Mode::Diagram,
+        ] {
             assert_eq!(
                 action_for_key(mode, key(KeyCode::Char('o'))),
                 Some(Action::OpenSource),

@@ -32,9 +32,10 @@ pub fn run_browser(
     project_root: &Path,
     metrics: Option<Metrics>,
 ) -> Result<(), TuiError> {
-    let app = App::new(codebase)?
+    let mut app = App::new(codebase)?
         .with_project_root(project_root.to_path_buf())
         .with_metrics(metrics);
+    app.start_default_view();
     run_browser_app(app)
 }
 

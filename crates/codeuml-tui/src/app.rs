@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use codeuml_core::{
@@ -11,12 +12,13 @@ use codeuml_diagram::{
 
 use codeuml_metrics::Metrics;
 
+use crate::architecture_diagram::build_architecture_diagram;
 use crate::format::{self, DetailRow};
 use crate::score::CrapScore;
 use crate::source::{self, SourceView};
 use crate::terminal_diagram::{
     layout_terminal_diagram, render_diagram_canvas, DiagramLayoutOptions, TerminalCanvas,
-    TerminalDiagramLayout,
+    TerminalDiagramLayout, TerminalNodeScore,
 };
 
 const PAGE_STEP: usize = 10;
@@ -26,6 +28,7 @@ const HISTORY_LIMIT: usize = 100;
 pub(crate) enum Mode {
     Browse,
     Architecture,
+    ArchitectureDiagram,
     Source,
     Diagram,
     Search,
@@ -63,6 +66,9 @@ pub(crate) enum Action {
     ScrollDetailsDown,
     OpenDiagram,
     OpenArchitecture,
+    OpenArchitectureDiagram,
+    ToggleArchitectureFull,
+    OpenTypeBrowser,
     OpenSource,
     Back,
     Ascend,
@@ -177,6 +183,15 @@ pub(crate) struct App<'a> {
     mode: Mode,
     architecture_parent: Option<SymbolId>,
     architecture_selected: usize,
+    architecture_visual_selected: Option<SymbolId>,
+    architecture_full: bool,
+    architecture_diagram_selectable: Vec<SymbolId>,
+    architecture_diagram_layout: TerminalDiagramLayout,
+    architecture_diagram_canvas: TerminalCanvas,
+    architecture_diagram_pan_x: u16,
+    architecture_diagram_pan_y: u16,
+    architecture_diagram_viewport_width: u16,
+    architecture_diagram_viewport_height: u16,
     project_root: Option<PathBuf>,
     metrics: Option<Metrics>,
     source: Option<SourceView>,
@@ -217,6 +232,15 @@ impl<'a> App<'a> {
             mode: Mode::Browse,
             architecture_parent: None,
             architecture_selected: 0,
+            architecture_visual_selected: None,
+            architecture_full: false,
+            architecture_diagram_selectable: Vec::new(),
+            architecture_diagram_layout: TerminalDiagramLayout::default(),
+            architecture_diagram_canvas: TerminalCanvas::default(),
+            architecture_diagram_pan_x: 0,
+            architecture_diagram_pan_y: 0,
+            architecture_diagram_viewport_width: 0,
+            architecture_diagram_viewport_height: 0,
             project_root: None,
             metrics: None,
             source: None,
@@ -361,6 +385,35 @@ impl<'a> App<'a> {
         self.crap_score(|metrics| metrics.type_score(qualified_name))
     }
 
+    fn architecture_diagram_scores(&self) -> BTreeMap<SymbolId, TerminalNodeScore> {
+        let mut scores = BTreeMap::new();
+        for module in self.codebase.modules() {
+            if let Some(score) =
+                self.crap_score(|metrics| metrics.module_score(&module.qualified_name))
+            {
+                scores.insert(
+                    module.id.clone(),
+                    TerminalNodeScore {
+                        text: score.text(),
+                        level: score.level,
+                    },
+                );
+            }
+        }
+        for declaration in self.codebase.types() {
+            if let Some(score) = self.type_crap(&declaration.qualified_name) {
+                scores.insert(
+                    declaration.id.clone(),
+                    TerminalNodeScore {
+                        text: score.text(),
+                        level: score.level,
+                    },
+                );
+            }
+        }
+        scores
+    }
+
     /// One-line explanation of the colour bands, shown when scores are loaded.
     pub(crate) fn crap_legend(&self) -> Option<String> {
         let thresholds = self.metrics.as_ref()?.thresholds();
@@ -446,6 +499,7 @@ impl<'a> App<'a> {
         match self.mode {
             Mode::Browse => self.handle_browse(action),
             Mode::Architecture => self.handle_architecture(action),
+            Mode::ArchitectureDiagram => self.handle_architecture_diagram(action),
             Mode::Source => self.handle_source(action),
             Mode::Diagram => self.handle_diagram(action),
             Mode::Search => self.handle_search(action),
@@ -549,6 +603,8 @@ impl<'a> App<'a> {
             Action::OpenScope | Action::OpenDiagnostics | Action::OpenHelp => {
                 self.handle_browse_overlays(action)
             }
+            Action::OpenArchitectureDiagram => self.open_architecture_diagram(),
+            Action::OpenTypeBrowser => self.open_type_browser(),
             _ => {}
         }
     }
@@ -559,6 +615,361 @@ impl<'a> App<'a> {
         } else {
             self.status = "Already at the project root.".to_owned();
         }
+    }
+
+    fn handle_architecture_diagram(&mut self, action: Action) {
+        match action {
+            Action::NavigateUp => self.select_architecture_diagram_node(-1),
+            Action::NavigateDown => self.select_architecture_diagram_node(1),
+            Action::Home => self.select_architecture_diagram_index(0),
+            Action::End => {
+                let last = self.architecture_diagram_selectable.len().saturating_sub(1);
+                self.select_architecture_diagram_index(last);
+            }
+            Action::PageUp => {
+                let page = i32::from(
+                    self.architecture_diagram_viewport_height
+                        .saturating_sub(1)
+                        .max(1),
+                );
+                self.pan_architecture_diagram(0, -page);
+            }
+            Action::PageDown => {
+                let page = i32::from(
+                    self.architecture_diagram_viewport_height
+                        .saturating_sub(1)
+                        .max(1),
+                );
+                self.pan_architecture_diagram(0, page);
+            }
+            Action::PanUp => self.pan_architecture_diagram(0, -1),
+            Action::PanDown => self.pan_architecture_diagram(0, 1),
+            Action::PanLeft => self.pan_architecture_diagram(-1, 0),
+            Action::PanRight => self.pan_architecture_diagram(1, 0),
+            Action::Confirm | Action::Descend => self.open_architecture_diagram_selection(),
+            Action::Ascend => self.ascend_architecture_diagram(),
+            Action::ToggleArchitectureFull => self.toggle_architecture_full(),
+            Action::CenterDiagram => {
+                self.center_architecture_diagram_on_selected();
+                self.status = "Architecture view centered on focused item.".to_owned();
+            }
+            Action::Cancel => self.close_architecture_diagram(),
+            Action::OpenSource => self.open_source(),
+            Action::OpenDiagnostics | Action::OpenHelp => self.handle_browse_overlays(action),
+            Action::OpenTypeBrowser => self.open_type_browser(),
+            _ => {}
+        }
+    }
+
+    pub(crate) fn start_default_view(&mut self) {
+        self.architecture_parent = None;
+        self.architecture_selected = 0;
+        self.open_architecture_diagram();
+        if self.architecture_diagram_layout.nodes.is_empty() {
+            self.mode = Mode::Browse;
+            self.status = self.selected_status();
+        }
+    }
+
+    fn open_type_browser(&mut self) {
+        self.mode = Mode::Browse;
+        self.focus = Focus::Types;
+        self.status = self.selected_status();
+    }
+
+    fn open_architecture_diagram(&mut self) {
+        self.mode = Mode::ArchitectureDiagram;
+        self.architecture_full = false;
+        self.architecture_visual_selected = self
+            .architecture_rows()
+            .get(self.architecture_selected)
+            .map(|row| row.id.clone())
+            .or_else(|| self.selected_type_id().cloned());
+        self.rebuild_architecture_diagram();
+        self.center_architecture_diagram_on_selected();
+        self.status = format!(
+            "Architecture diagram: {} | j/k focus, l/Enter open, h up, t full",
+            self.architecture_path_label()
+        );
+    }
+
+    fn close_architecture_diagram(&mut self) {
+        if let Some(selected) = self.architecture_visual_selected.clone() {
+            if let Some(position) = self
+                .architecture_rows()
+                .iter()
+                .position(|row| row.id == selected)
+            {
+                self.architecture_selected = position;
+            }
+        }
+        self.mode = Mode::Architecture;
+        self.status = format!("Architecture: {} item(s)", self.architecture_rows().len());
+    }
+
+    fn rebuild_architecture_diagram(&mut self) {
+        let view = build_architecture_diagram(
+            self.codebase,
+            self.architecture_parent.as_ref(),
+            self.architecture_full,
+        );
+        self.architecture_diagram_selectable = view.selectable;
+        if self
+            .architecture_visual_selected
+            .as_ref()
+            .is_none_or(|id| !self.architecture_diagram_selectable.contains(id))
+        {
+            self.architecture_visual_selected =
+                self.architecture_diagram_selectable.first().cloned();
+        }
+        let mut options = self.diagram_options.clone();
+        options.node_scores = self.architecture_diagram_scores();
+        self.architecture_diagram_layout = layout_terminal_diagram(&view.projection, &options);
+        self.architecture_diagram_canvas = render_diagram_canvas(
+            &self.architecture_diagram_layout,
+            self.architecture_visual_selected.as_ref(),
+        );
+        self.clamp_architecture_diagram_pan();
+    }
+
+    fn select_architecture_diagram_node(&mut self, delta: isize) {
+        if self.architecture_diagram_selectable.is_empty() {
+            self.status = "No modules or types in this level.".to_owned();
+            return;
+        }
+        let current = self
+            .architecture_visual_selected
+            .as_ref()
+            .and_then(|id| {
+                self.architecture_diagram_selectable
+                    .iter()
+                    .position(|candidate| candidate == id)
+            })
+            .unwrap_or(0);
+        let count = self.architecture_diagram_selectable.len();
+        let next = (current as isize + delta).rem_euclid(count as isize) as usize;
+        self.select_architecture_diagram_index(next);
+    }
+
+    fn select_architecture_diagram_index(&mut self, index: usize) {
+        if let Some(id) = self.architecture_diagram_selectable.get(index).cloned() {
+            self.architecture_visual_selected = Some(id);
+            self.architecture_diagram_canvas = render_diagram_canvas(
+                &self.architecture_diagram_layout,
+                self.architecture_visual_selected.as_ref(),
+            );
+            self.center_architecture_diagram_on_selected();
+            self.status = self.architecture_selected_status();
+        }
+    }
+
+    fn architecture_selected_status(&self) -> String {
+        self.architecture_visual_selected
+            .as_ref()
+            .and_then(|id| {
+                self.codebase
+                    .module(id)
+                    .map(|module| format!("Selected module {}", module.qualified_name))
+                    .or_else(|| {
+                        self.codebase.type_by_id(id).map(|declaration| {
+                            format!("Selected type {}", declaration.qualified_name)
+                        })
+                    })
+            })
+            .unwrap_or_else(|| "Nothing selected.".to_owned())
+    }
+
+    fn open_architecture_diagram_selection(&mut self) {
+        let Some(id) = self.architecture_visual_selected.clone() else {
+            self.status = "Nothing selected.".to_owned();
+            return;
+        };
+        if self.codebase.module(&id).is_some() {
+            self.architecture_parent = Some(id);
+            self.architecture_full = false;
+            self.architecture_visual_selected = None;
+            self.rebuild_architecture_diagram();
+            self.center_architecture_diagram_on_selected();
+            self.status = format!("Opened {}.", self.architecture_path_label());
+            return;
+        }
+        self.open_type_from_architecture(id);
+    }
+
+    fn open_type_from_architecture(&mut self, id: SymbolId) {
+        let Some(declaration) = self.codebase.type_by_id(&id) else {
+            self.status = "Selected type is no longer available.".to_owned();
+            return;
+        };
+        let scope = declaration
+            .module
+            .clone()
+            .map(|module| DiagramScope::Module { module })
+            .unwrap_or(DiagramScope::Project);
+        if let Err(error) = self.replace_projection(scope, Some(id.clone())) {
+            self.status = format!("Cannot open type: {error}");
+            return;
+        }
+        self.mode = Mode::Browse;
+        self.focus = Focus::Types;
+        self.status = format!("Opened {}.", self.selected_status_value());
+    }
+
+    fn ascend_architecture_diagram(&mut self) {
+        if self.architecture_full {
+            self.architecture_full = false;
+            self.rebuild_architecture_diagram();
+            self.center_architecture_diagram_on_selected();
+            self.status = "Architecture level view.".to_owned();
+            return;
+        }
+        let Some(current) = self.architecture_parent.clone() else {
+            self.close_architecture_diagram();
+            return;
+        };
+        let parent = self
+            .codebase
+            .module(&current)
+            .and_then(|module| module.parent.clone());
+        self.architecture_parent = parent;
+        self.architecture_visual_selected = Some(current);
+        self.rebuild_architecture_diagram();
+        self.center_architecture_diagram_on_selected();
+        self.status = format!("Returned to {}.", self.architecture_path_label());
+    }
+
+    fn toggle_architecture_full(&mut self) {
+        self.architecture_full = !self.architecture_full;
+        self.rebuild_architecture_diagram();
+        self.center_architecture_diagram_on_selected();
+        self.status = if self.architecture_full {
+            "Architecture: full hierarchy".to_owned()
+        } else {
+            format!("Architecture level: {}", self.architecture_path_label())
+        };
+    }
+
+    fn pan_architecture_diagram(&mut self, dx: i32, dy: i32) {
+        let max_x = self
+            .architecture_diagram_layout
+            .width
+            .saturating_sub(self.architecture_diagram_viewport_width);
+        let max_y = self
+            .architecture_diagram_layout
+            .height
+            .saturating_sub(self.architecture_diagram_viewport_height);
+        self.architecture_diagram_pan_x =
+            (i32::from(self.architecture_diagram_pan_x) + dx).clamp(0, i32::from(max_x)) as u16;
+        self.architecture_diagram_pan_y =
+            (i32::from(self.architecture_diagram_pan_y) + dy).clamp(0, i32::from(max_y)) as u16;
+        self.status = format!(
+            "Architecture pan ({}, {})",
+            self.architecture_diagram_pan_x, self.architecture_diagram_pan_y
+        );
+    }
+
+    fn center_architecture_diagram_on_selected(&mut self) {
+        let Some(id) = self.architecture_visual_selected.as_ref() else {
+            return;
+        };
+        let Some(rect) = self.architecture_diagram_layout.node_rect(id) else {
+            return;
+        };
+        if self.architecture_diagram_viewport_width == 0
+            || self.architecture_diagram_viewport_height == 0
+        {
+            return;
+        }
+        let target_x = rect
+            .x
+            .saturating_add(rect.width / 2)
+            .saturating_sub(self.architecture_diagram_viewport_width / 2);
+        let target_y = rect
+            .y
+            .saturating_add(rect.height / 2)
+            .saturating_sub(self.architecture_diagram_viewport_height / 2);
+        let max_x = self
+            .architecture_diagram_layout
+            .width
+            .saturating_sub(self.architecture_diagram_viewport_width);
+        let max_y = self
+            .architecture_diagram_layout
+            .height
+            .saturating_sub(self.architecture_diagram_viewport_height);
+        self.architecture_diagram_pan_x = target_x.min(max_x);
+        self.architecture_diagram_pan_y = target_y.min(max_y);
+    }
+
+    pub(crate) fn set_architecture_diagram_viewport(&mut self, width: u16, height: u16) {
+        if width == self.architecture_diagram_viewport_width
+            && height == self.architecture_diagram_viewport_height
+        {
+            return;
+        }
+        self.architecture_diagram_viewport_width = width;
+        self.architecture_diagram_viewport_height = height;
+        self.clamp_architecture_diagram_pan();
+        if !self.architecture_selected_rect_visible() {
+            self.center_architecture_diagram_on_selected();
+        }
+    }
+
+    fn clamp_architecture_diagram_pan(&mut self) {
+        if self.architecture_diagram_viewport_width == 0
+            || self.architecture_diagram_viewport_height == 0
+        {
+            self.architecture_diagram_pan_x = 0;
+            self.architecture_diagram_pan_y = 0;
+            return;
+        }
+        let max_x = self
+            .architecture_diagram_layout
+            .width
+            .saturating_sub(self.architecture_diagram_viewport_width);
+        let max_y = self
+            .architecture_diagram_layout
+            .height
+            .saturating_sub(self.architecture_diagram_viewport_height);
+        self.architecture_diagram_pan_x = self.architecture_diagram_pan_x.min(max_x);
+        self.architecture_diagram_pan_y = self.architecture_diagram_pan_y.min(max_y);
+    }
+
+    fn architecture_selected_rect_visible(&self) -> bool {
+        let Some(id) = self.architecture_visual_selected.as_ref() else {
+            return true;
+        };
+        let Some(rect) = self.architecture_diagram_layout.node_rect(id) else {
+            return true;
+        };
+        let right = self
+            .architecture_diagram_pan_x
+            .saturating_add(self.architecture_diagram_viewport_width);
+        let bottom = self
+            .architecture_diagram_pan_y
+            .saturating_add(self.architecture_diagram_viewport_height);
+        rect.x < right
+            && rect.right() > self.architecture_diagram_pan_x
+            && rect.y < bottom
+            && rect.bottom() > self.architecture_diagram_pan_y
+    }
+
+    pub(crate) fn architecture_diagram_layout(&self) -> &TerminalDiagramLayout {
+        &self.architecture_diagram_layout
+    }
+
+    pub(crate) fn architecture_diagram_canvas(&self) -> &TerminalCanvas {
+        &self.architecture_diagram_canvas
+    }
+
+    pub(crate) fn architecture_diagram_pan(&self) -> (u16, u16) {
+        (
+            self.architecture_diagram_pan_x,
+            self.architecture_diagram_pan_y,
+        )
+    }
+
+    pub(crate) fn architecture_diagram_full(&self) -> bool {
+        self.architecture_full
     }
 
     fn handle_diagram(&mut self, action: Action) {
@@ -1238,10 +1649,29 @@ impl<'a> App<'a> {
         if self.mode == Mode::Architecture {
             return self.architecture_source_target();
         }
+        if self.mode == Mode::ArchitectureDiagram {
+            return self.architecture_diagram_source_target();
+        }
         if self.mode == Mode::Browse && self.focus == Focus::Relationships {
             return self.relationship_source_target();
         }
         self.selected_source_target()
+    }
+
+    fn architecture_diagram_source_target(&self) -> Option<(SourceLocation, String)> {
+        let id = self.architecture_visual_selected.as_ref()?;
+        if let Some(module) = self.codebase.module(id) {
+            Some((
+                module.location.clone(),
+                format!("Module {}", module.qualified_name),
+            ))
+        } else {
+            let declaration = self.codebase.type_by_id(id)?;
+            Some((
+                declaration.location.clone(),
+                declaration.qualified_name.clone(),
+            ))
+        }
     }
 
     fn architecture_source_target(&self) -> Option<(SourceLocation, String)> {
@@ -2181,6 +2611,230 @@ mod tests {
         let gamma = app.detail_lines().join("\n");
         assert!(gamma.contains("Trait") || gamma.contains("trait"));
         assert!(gamma.contains("run"));
+    }
+
+    #[test]
+    fn architecture_diagram_level_full_zoom_back_and_type_opening_work() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+        assert!(!app.architecture_full);
+        assert!(!app.architecture_diagram_layout.nodes.is_empty());
+        assert_eq!(
+            app.architecture_visual_selected.as_ref(),
+            app.architecture_diagram_selectable.first()
+        );
+
+        app.handle(Action::NavigateDown);
+        let models = SymbolId::declaration("src/models.rs", "models");
+        assert_eq!(app.architecture_visual_selected.as_ref(), Some(&models));
+
+        app.handle(Action::Confirm);
+        assert_eq!(app.architecture_parent.as_ref(), Some(&models));
+        assert_eq!(app.architecture_path_label(), "models");
+        assert!(app
+            .architecture_diagram_layout
+            .nodes
+            .iter()
+            .any(|node| node.name == "Alpha"));
+        assert_eq!(
+            app.architecture_visual_selected.as_ref(),
+            app.architecture_diagram_selectable.first()
+        );
+
+        app.handle(Action::ToggleArchitectureFull);
+        assert!(app.architecture_full);
+        assert!(app.architecture_diagram_layout.nodes.len() > 5);
+        app.handle(Action::ToggleArchitectureFull);
+        assert!(!app.architecture_full);
+
+        app.handle(Action::Ascend);
+        assert_eq!(app.architecture_parent, None);
+        assert_eq!(app.architecture_visual_selected.as_ref(), Some(&models));
+        app.handle(Action::Ascend);
+        assert_eq!(app.mode(), Mode::Architecture);
+
+        app.handle(Action::OpenArchitectureDiagram);
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Confirm);
+        app.handle(Action::Confirm);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert_eq!(selected_name(&app), Some("Api"));
+    }
+
+    #[test]
+    fn default_tui_view_is_architecture_map_and_t_switches_to_type_browser() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.start_default_view();
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+        assert!(!app.architecture_diagram_layout.nodes.is_empty());
+
+        app.handle(Action::OpenTypeBrowser);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert!(app.detail_lines().iter().any(|line| line.contains("Name:")));
+    }
+
+    #[test]
+    fn architecture_diagram_scores_are_placed_top_right_with_crap_band_styles() {
+        use crate::terminal_diagram::TerminalDiagramStyle;
+        use codeuml_metrics::CrapLevel;
+
+        let codebase = fixture_codebase();
+        let metrics = crate::test_support::fixture_metrics();
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_metrics(Some(metrics));
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+
+        let models = SymbolId::declaration("src/models.rs", "models");
+        let api = SymbolId::declaration("src/api.rs", "api");
+        let models_node = app
+            .architecture_diagram_layout
+            .nodes
+            .iter()
+            .find(|node| node.id == models)
+            .expect("models node");
+        assert_eq!(
+            models_node.score.as_ref().map(|score| score.text.as_str()),
+            Some("14.5")
+        );
+        assert_eq!(
+            models_node.score.as_ref().map(|score| score.level),
+            Some(CrapLevel::Bad)
+        );
+        let score_width = 4;
+        let score_x = models_node.rect.right() - 2 - score_width;
+        let score_cell = app
+            .architecture_diagram_canvas
+            .cell(score_x, models_node.rect.y + 1)
+            .expect("score cell");
+        assert_eq!(score_cell.style, TerminalDiagramStyle::ScoreBad);
+
+        let api_node = app
+            .architecture_diagram_layout
+            .nodes
+            .iter()
+            .find(|node| node.id == api)
+            .expect("api node");
+        assert_eq!(
+            api_node.score.as_ref().map(|score| score.text.as_str()),
+            Some("8.0")
+        );
+        let api_score_x = api_node.rect.right() - 2 - 3;
+        assert_eq!(
+            app.architecture_diagram_canvas
+                .cell(api_score_x, api_node.rect.y + 1)
+                .expect("api score cell")
+                .style,
+            TerminalDiagramStyle::ScoreMedium
+        );
+    }
+
+    #[test]
+    fn architecture_diagram_score_colours_follow_configured_thresholds() {
+        use crate::terminal_diagram::TerminalDiagramStyle;
+        use codeuml_metrics::{CrapEntry, CrapLevel, CrapThresholds, Metrics};
+
+        let codebase = fixture_codebase();
+        let metrics = Metrics::new(
+            &[
+                CrapEntry {
+                    name: "find".to_owned(),
+                    namespace: "models::Alpha".to_owned(),
+                    crap: 14.5,
+                },
+                CrapEntry {
+                    name: "helper".to_owned(),
+                    namespace: "api".to_owned(),
+                    crap: 8.0,
+                },
+            ],
+            CrapThresholds {
+                good_max: 10.0,
+                medium_max: 20.0,
+            },
+        );
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_metrics(Some(metrics));
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+
+        let models = SymbolId::declaration("src/models.rs", "models");
+        let api = SymbolId::declaration("src/api.rs", "api");
+        let models_node = app
+            .architecture_diagram_layout
+            .nodes
+            .iter()
+            .find(|node| node.id == models)
+            .expect("models node");
+        let api_node = app
+            .architecture_diagram_layout
+            .nodes
+            .iter()
+            .find(|node| node.id == api)
+            .expect("api node");
+
+        assert_eq!(
+            models_node.score.as_ref().map(|score| score.level),
+            Some(CrapLevel::Medium)
+        );
+        assert_eq!(
+            api_node.score.as_ref().map(|score| score.level),
+            Some(CrapLevel::Good)
+        );
+        let models_score_x = models_node.rect.right() - 2 - 4;
+        let api_score_x = api_node.rect.right() - 2 - 3;
+        assert_eq!(
+            app.architecture_diagram_canvas
+                .cell(models_score_x, models_node.rect.y + 1)
+                .expect("models score cell")
+                .style,
+            TerminalDiagramStyle::ScoreMedium
+        );
+        assert_eq!(
+            app.architecture_diagram_canvas
+                .cell(api_score_x, api_node.rect.y + 1)
+                .expect("api score cell")
+                .style,
+            TerminalDiagramStyle::ScoreGood
+        );
+    }
+
+    #[test]
+    fn architecture_diagram_viewport_pan_center_and_overlays_are_bounded() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+        app.set_architecture_diagram_viewport(20, 7);
+
+        app.handle(Action::PanRight);
+        app.handle(Action::PanDown);
+        let panned = app.architecture_diagram_pan();
+        assert!(panned.0 > 0 || panned.1 > 0);
+        assert!(app.status().contains("Architecture pan"));
+        app.handle(Action::CenterDiagram);
+        assert!(app.status().contains("centered"));
+
+        app.handle(Action::OpenHelp);
+        assert_eq!(app.mode(), Mode::Help);
+        assert_eq!(app.overlay_return(), Mode::ArchitectureDiagram);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+
+        app.handle(Action::OpenDiagnostics);
+        assert_eq!(app.mode(), Mode::Diagnostics);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+
+        app.set_architecture_diagram_viewport(8, 4);
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
     }
 
     #[test]

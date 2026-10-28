@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use codeuml_core::{RelationshipKind, ResolutionStatus, SymbolId, TypeKind};
 use codeuml_diagram::{DiagramEndpoint, DiagramMemberKind, DiagramProjection};
+use codeuml_metrics::CrapLevel;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const MARGIN_X: u16 = 2;
@@ -13,10 +14,18 @@ const BOUNDARY_GAP: u16 = 3;
 const BOUNDARY_HEIGHT: u16 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TerminalNodeScore {
+    pub text: String,
+    pub level: CrapLevel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DiagramLayoutOptions {
     pub max_members: usize,
     pub max_node_width: u16,
     pub max_canvas_width: u16,
+    /// Optional top-right CRAP annotation per node.
+    pub node_scores: BTreeMap<SymbolId, TerminalNodeScore>,
 }
 
 impl Default for DiagramLayoutOptions {
@@ -25,6 +34,7 @@ impl Default for DiagramLayoutOptions {
             max_members: 4,
             max_node_width: 38,
             max_canvas_width: 200,
+            node_scores: BTreeMap::new(),
         }
     }
 }
@@ -68,6 +78,7 @@ pub(crate) struct TerminalDiagramNode {
     pub rect: DiagramRect,
     pub title: String,
     pub lines: Vec<String>,
+    pub score: Option<TerminalNodeScore>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,6 +149,9 @@ pub(crate) enum TerminalDiagramStyle {
     NodeText,
     NodeSelectedBorder,
     NodeSelectedText,
+    ScoreGood,
+    ScoreMedium,
+    ScoreBad,
     Boundary,
     Unresolved,
     EdgeDefault,
@@ -437,7 +451,13 @@ fn layout_nodes(
     let specs: Vec<_> = projection
         .nodes
         .iter()
-        .map(|node| (node, terminal_node_content(node, options, max_node_width)))
+        .map(|node| {
+            let score = options.node_scores.get(&node.id);
+            (
+                node,
+                terminal_node_content(node, options, max_node_width, score),
+            )
+        })
         .collect();
     let indexes: BTreeMap<SymbolId, usize> = projection
         .nodes
@@ -470,6 +490,7 @@ fn layout_nodes(
             rect: rects[index],
             title: content.title,
             lines: content.lines,
+            score: options.node_scores.get(&projected.id).cloned(),
         })
         .collect();
     let max_right = nodes
@@ -649,12 +670,18 @@ fn terminal_node_content(
     node: &codeuml_diagram::DiagramNode,
     options: &DiagramLayoutOptions,
     max_node_width: u16,
+    score: Option<&TerminalNodeScore>,
 ) -> NodeContent {
-    let title = format!("{} [{} {}]", node.name, node.visibility, node.kind);
+    let title = if matches!(&node.kind, TypeKind::Other(kind) if kind == "module") {
+        format!("{} [module]", node.name)
+    } else {
+        format!("{} [{} {}]", node.name, node.visibility, node.kind)
+    };
     let mut lines = Vec::new();
     if node.qualified_name != node.name {
         lines.push(node.qualified_name.clone());
     }
+    lines.extend(node.extra_lines.iter().cloned());
     if let Some(alias) = &node.alias_of {
         lines.push(format!("= {alias}"));
     }
@@ -671,7 +698,15 @@ fn terminal_node_content(
         lines.push(format!("+{remaining} more"));
     }
 
-    let width = (UnicodeWidthStr::width(title.as_str()) as u16)
+    let score_width = score
+        .map(|score| UnicodeWidthStr::width(score.text.as_str()) as u16)
+        .unwrap_or(0);
+    let score_space = if score_width > 0 {
+        score_width.saturating_add(2)
+    } else {
+        0
+    };
+    let width = (UnicodeWidthStr::width(title.as_str()) as u16 + score_space)
         .max(
             lines
                 .iter()
@@ -682,7 +717,8 @@ fn terminal_node_content(
         .saturating_add(4)
         .clamp(NODE_MIN_WIDTH, max_node_width);
     let text_width = width.saturating_sub(4);
-    let title = truncate_text(&title, text_width);
+    let title_width = text_width.saturating_sub(score_space);
+    let title = truncate_text(&title, title_width);
     let lines: Vec<String> = lines
         .into_iter()
         .map(|line| truncate_text(&line, text_width))
@@ -1107,9 +1143,12 @@ fn draw_boundaries(canvas: &mut TerminalCanvas, boundaries: &[TerminalDiagramBou
             boundary.rect,
             &boundary.label,
             &[],
-            style,
-            style,
-            true,
+            BoxStyle {
+                border: style,
+                text: style,
+                dashed: true,
+            },
+            None,
         );
     }
 }
@@ -1136,9 +1175,12 @@ fn draw_nodes(
             node.rect,
             &node.title,
             &node.lines,
-            border,
-            text,
-            false,
+            BoxStyle {
+                border,
+                text,
+                dashed: false,
+            },
+            node.score.as_ref(),
         );
     }
 }
@@ -1151,41 +1193,47 @@ fn draw_edge_labels(canvas: &mut TerminalCanvas, edges: &[TerminalDiagramEdge]) 
     }
 }
 
+#[derive(Clone, Copy)]
+struct BoxStyle {
+    border: TerminalDiagramStyle,
+    text: TerminalDiagramStyle,
+    dashed: bool,
+}
+
 fn draw_box(
     canvas: &mut TerminalCanvas,
     rect: DiagramRect,
     title: &str,
     lines: &[String],
-    border_style: TerminalDiagramStyle,
-    text_style: TerminalDiagramStyle,
-    dashed: bool,
+    style: BoxStyle,
+    score: Option<&TerminalNodeScore>,
 ) {
-    canvas.fill_rect(rect, text_style);
-    let horizontal = if dashed { '┄' } else { '─' };
-    let vertical = if dashed { '┆' } else { '│' };
-    canvas.put_char(rect.x, rect.y, '┌', border_style);
-    canvas.put_char(rect.right().saturating_sub(1), rect.y, '┐', border_style);
-    canvas.put_char(rect.x, rect.bottom().saturating_sub(1), '└', border_style);
+    canvas.fill_rect(rect, style.text);
+    let horizontal = if style.dashed { '┄' } else { '─' };
+    let vertical = if style.dashed { '┆' } else { '│' };
+    canvas.put_char(rect.x, rect.y, '┌', style.border);
+    canvas.put_char(rect.right().saturating_sub(1), rect.y, '┐', style.border);
+    canvas.put_char(rect.x, rect.bottom().saturating_sub(1), '└', style.border);
     canvas.put_char(
         rect.right().saturating_sub(1),
         rect.bottom().saturating_sub(1),
         '┘',
-        border_style,
+        style.border,
     );
     for x in rect.x.saturating_add(1)..rect.right().saturating_sub(1) {
-        canvas.put_char(x, rect.y, horizontal, border_style);
-        canvas.put_char(x, rect.bottom().saturating_sub(1), horizontal, border_style);
+        canvas.put_char(x, rect.y, horizontal, style.border);
+        canvas.put_char(x, rect.bottom().saturating_sub(1), horizontal, style.border);
     }
     for y in rect.y.saturating_add(1)..rect.bottom().saturating_sub(1) {
-        canvas.put_char(rect.x, y, vertical, border_style);
-        canvas.put_char(rect.right().saturating_sub(1), y, vertical, border_style);
+        canvas.put_char(rect.x, y, vertical, style.border);
+        canvas.put_char(rect.right().saturating_sub(1), y, vertical, style.border);
     }
     if rect.width > 4 {
         canvas.put_text(
             rect.x.saturating_add(2),
             rect.y.saturating_add(1),
             title,
-            text_style,
+            style.text,
         );
         for (index, line) in lines.iter().enumerate() {
             if rect.y.saturating_add(2) + index as u16 >= rect.bottom().saturating_sub(1) {
@@ -1195,9 +1243,27 @@ fn draw_box(
                 rect.x.saturating_add(2),
                 rect.y.saturating_add(2) + index as u16,
                 line,
-                text_style,
+                style.text,
             );
         }
+        if let Some(score) = score {
+            let score_width = UnicodeWidthStr::width(score.text.as_str()) as u16;
+            let score_x = rect.right().saturating_sub(2).saturating_sub(score_width);
+            canvas.put_text(
+                score_x,
+                rect.y.saturating_add(1),
+                &score.text,
+                score_style(score.level),
+            );
+        }
+    }
+}
+
+fn score_style(level: CrapLevel) -> TerminalDiagramStyle {
+    match level {
+        CrapLevel::Good => TerminalDiagramStyle::ScoreGood,
+        CrapLevel::Medium => TerminalDiagramStyle::ScoreMedium,
+        CrapLevel::Bad => TerminalDiagramStyle::ScoreBad,
     }
 }
 
@@ -1261,6 +1327,7 @@ mod tests {
                     text: (*text).to_owned(),
                 })
                 .collect(),
+            extra_lines: Vec::new(),
         }
     }
 

@@ -6,10 +6,11 @@ exporting a standalone SVG diagram. It discovers projects, extracts declarations
 and references without requiring a build or an interpreter, resolves references
 conservatively, and projects a deterministic graph.
 
-> **Status: Milestone 6.** Discovery, syntax analysis, conservative reference
-> resolution, diagram projection, the Ratatui/Crossterm browser, an interactive
-> terminal UML view, and SVG export are implemented for Rust and Python.
-> Persistence and compiler/semantic integration are not implemented.
+> **Status: Milestone 6, extended with an architecture map.** Discovery, syntax
+> analysis, conservative reference resolution, diagram projection, the
+> Ratatui/Crossterm browser, interactive type and architecture diagrams, and SVG
+> export are implemented for Rust and Python. Persistence and compiler/semantic
+> integration are not implemented.
 
 ## Workspace
 
@@ -87,7 +88,8 @@ packaging marker or Python files for Python). Otherwise CodeUML exits with an
 error listing what it looked for.
 
 - If both stdin and stdout are terminals, no explicit export options are present,
-  and `--format` is omitted, CodeUML opens the interactive browser.
+  and `--format` is omitted, CodeUML opens the interactive **architecture map**
+  at the project root.
 - If either stream is not a terminal (pipes, captured output, CI), CodeUML prints
   a non-interactive summary and exits without waiting for keyboard input.
 - `--format svg`, `--output`, `--scope`, `--module`, `--type`, or `--force`
@@ -102,11 +104,11 @@ Non-interactive summary example:
 ```text
 CodeUML 0.1.0
 Project root: /path/to/project
-Source files: 43
-Types: 105
-Relationships: 462
-Diagram nodes: 105
-Diagram edges: 343
+Source files: 66
+Types: 168
+Relationships: 680
+Diagram nodes: 168
+Diagram edges: 486
 Diagnostics: 0
 Analysis: syntax only (39 analyzed, 0 failed)
 ```
@@ -189,6 +191,8 @@ The browser is a functional keyboard UI, not a graphical desktop application:
   resolution state, target/source identity, and boundary/unresolved markers.
 - **Diagram view** — a scrollable Unicode box-drawing UML canvas for the active
   project/module/neighborhood projection.
+- **Architecture map** — a level/full visualization of the module/type hierarchy,
+  opened from the Architecture browser.
 - **Footer** — selected status, search prompt, and contextual shortcuts.
 
 ### Keyboard shortcuts
@@ -206,6 +210,7 @@ The browser is a functional keyboard UI, not a graphical desktop application:
 | `Esc` | Clear an active search or close the current view |
 | `s` | Open scope dialog |
 | `a` | Open the hierarchical module architecture browser |
+| `t` (Architecture/map) | Switch to the type browser |
 | `d` | Open diagnostics |
 | `Ctrl+U`/`Ctrl+D` | Scroll type details |
 | `v` | Open the terminal UML diagram view |
@@ -220,8 +225,9 @@ as text. `Ctrl+C` still quits.
 
 ### Module architecture browser
 
-Press `a` from the type browser to navigate the analyzed module hierarchy in
-three ranger-style panes:
+The TUI starts in the architecture map. Press `t` there for the type browser;
+from the type browser, `a` opens the module architecture browser. The architecture
+browser uses three ranger-style panes:
 
 - **Left** — the parent level, with the current module highlighted
   (`Project root` at the top).
@@ -333,6 +339,51 @@ Diagram keyboard shortcuts:
 | `?` | Help |
 | `q` | Quit |
 | `Ctrl+C` | Quit from any view |
+
+### Architecture map
+
+The architecture map is the default interactive TUI view. It is also available
+from the Architecture browser with `v`. `t` switches directly to the type browser;
+`v` from the type browser still opens the separate type UML diagram.
+
+Default **level view**:
+
+- Shows the current level’s child modules and types, plus the containing module
+  as a context box when inside a module.
+- Containment edges are labelled `contains`.
+- When a CRAP report is loaded, module/type scores appear in the top-right of
+  their node boxes using the same green/yellow/red bands as the list views.
+- `j`/`k` or `Up`/`Down` move focus among selectable modules/types.
+- `l`/`Right`/`Enter` on a module zooms into it and shows its level.
+- `l`/`Right`/`Enter` on a type opens the existing type browser/details view.
+- `h`/`Left` steps up one level; at the project root it returns to the
+  Architecture browser.
+- `f` toggles between level view and the full module/type hierarchy.
+- `t` switches directly to the type browser.
+- `Esc`/`b`/`v` returns to the Architecture browser.
+- `Ctrl+h/j/k/l` and `PageUp`/`PageDown` pan; `c` recenters on the focused item.
+- `o` opens source for the selected module/type; `d` diagnostics; `?` help.
+
+The full view shows all modules and types with containment edges. It is useful
+as an overview but can be large; the shared viewport clips and pans it safely.
+Cross-module dependency aggregation is not included yet.
+
+Architecture map keys:
+
+| Key | Action |
+| --- | --- |
+| `j`/`k`, `Up`/`Down` | Focus next/previous module or type |
+| `l`/`Right`/`Enter` | Zoom into module or open type |
+| `h`/`Left` | Step up one level |
+| `f` | Toggle level/full hierarchy |
+| `t` | Switch to the type browser |
+| `Ctrl+h/j/k/l`, `PageUp`/`PageDown` | Pan |
+| `c` | Center focused item |
+| `o` | Open source |
+| `Esc`/`b`/`v` | Return to Architecture list |
+| `d` | Diagnostics |
+| `?` | Help |
+| `q` | Quit |
 
 ### Search
 
@@ -515,6 +566,8 @@ git diff --cached --check
 - The terminal diagram does not implement zoom, arbitrary placement, or
   crossing-minimized routing. Edge labels may be omitted when no collision-free
   space is available.
+- The architecture map visualizes containment relationships. It does not yet
+  aggregate type dependencies into module-to-module architecture edges.
 - Diagram node detail is intentionally compact; use the existing details panel
   for complete members.
 - SVG layout uses a deterministic layered/grid fallback rather than a

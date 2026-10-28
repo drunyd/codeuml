@@ -5,6 +5,7 @@
 //! navigation can be tested without a real terminal.
 
 mod app;
+mod architecture_diagram;
 mod format;
 mod input;
 mod render;

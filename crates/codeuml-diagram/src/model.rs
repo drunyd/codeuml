@@ -68,6 +68,9 @@ pub struct DiagramNode {
     pub method_count: usize,
     pub variant_count: usize,
     pub members: Vec<DiagramMember>,
+    /// View-specific lines used by specialized renderers (for example the
+    /// architecture map). Type projections normally leave this empty.
+    pub extra_lines: Vec<String>,
 }
 
 /// One end of a diagram edge.

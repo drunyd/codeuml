@@ -72,6 +72,7 @@ pub(crate) fn render(frame: &mut Frame<'_>, app: &mut App<'_>) {
 fn background_mode(app: &App<'_>) -> Mode {
     match app.mode() {
         Mode::Architecture => Mode::Architecture,
+        Mode::ArchitectureDiagram => Mode::ArchitectureDiagram,
         Mode::Diagram => Mode::Diagram,
         Mode::Help | Mode::ScopeDialog => app.overlay_return(),
         _ => Mode::Browse,
@@ -85,6 +86,8 @@ fn render_main_view(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect, backgr
         render_source(frame, app, area);
     } else if background == Mode::Diagram {
         render_diagram(frame, app, area);
+    } else if background == Mode::ArchitectureDiagram {
+        render_architecture_diagram(frame, app, area);
     } else if background == Mode::Architecture {
         render_architecture(frame, app, area);
     } else {
@@ -114,6 +117,37 @@ fn render_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
 
     let canvas = app.diagram_canvas();
     let (pan_x, pan_y) = app.diagram_pan();
+    let lines = diagram_lines(canvas, inner, pan_x, pan_y);
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_architecture_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
+    let mode = if app.architecture_diagram_full() {
+        "full hierarchy"
+    } else {
+        "level"
+    };
+    let block = Block::default().borders(Borders::ALL).title(format!(
+        "Architecture diagram - {} ({mode})",
+        app.architecture_path_label()
+    ));
+    let inner = block.inner(area);
+    app.set_architecture_diagram_viewport(inner.width, inner.height);
+    frame.render_widget(block, area);
+
+    if app.architecture_diagram_layout().nodes.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No modules or types in this architecture level.")
+                .style(Style::default().fg(Color::DarkGray)),
+            inner,
+        );
+        return;
+    }
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let canvas = app.architecture_diagram_canvas();
+    let (pan_x, pan_y) = app.architecture_diagram_pan();
     let lines = diagram_lines(canvas, inner, pan_x, pan_y);
     frame.render_widget(Paragraph::new(lines), inner);
 }
@@ -383,7 +417,20 @@ fn diagram_cell_style(style: TerminalDiagramStyle) -> Style {
         | TerminalDiagramStyle::EdgeAlias
         | TerminalDiagramStyle::EdgeBoundary
         | TerminalDiagramStyle::EdgeUnresolved => edge_cell_style(style),
+        TerminalDiagramStyle::ScoreGood
+        | TerminalDiagramStyle::ScoreMedium
+        | TerminalDiagramStyle::ScoreBad => score_cell_style(style),
     }
+}
+
+fn score_cell_style(style: TerminalDiagramStyle) -> Style {
+    let color = match style {
+        TerminalDiagramStyle::ScoreGood => Color::Green,
+        TerminalDiagramStyle::ScoreMedium => Color::Yellow,
+        TerminalDiagramStyle::ScoreBad => Color::Red,
+        _ => return Style::default(),
+    };
+    Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
 fn node_cell_style(style: TerminalDiagramStyle) -> Style {
@@ -665,7 +712,10 @@ fn render_footer(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
         }
         Mode::Source => "Up/Down PgUp/PgDn Home/End scroll  Esc/b/o close  Ctrl+C quit",
         Mode::Architecture => {
-            "j/k move  l/Enter open  h up a level  o source  Esc/b up or exit  s scope  d diagnostics  ? help  q quit"
+            "j/k move  l/Enter open  h up a level  v diagram  t type view  o source  Esc/b up or exit  d diagnostics  ? help  q quit"
+        }
+        Mode::ArchitectureDiagram => {
+            "j/k select  l/Enter zoom/open  h up  f full/level  t type view  Ctrl+hjkl pan  c center  o source  Esc/b/v list  d diag  ? help  q quit"
         }
         Mode::Search => "Type to filter  Backspace  Enter accept  Esc cancel  Ctrl+C quit",
         Mode::Diagnostics => "Up/Down scroll  PgUp/PgDn  Home/End  Esc back  Ctrl+C quit",
@@ -703,6 +753,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from("Esc                Clear search / close view"),
         Line::from("s                  Choose project, module, or neighborhood scope"),
         Line::from("a                  Browse the hierarchical module architecture"),
+        Line::from("v (Architecture)   Visualize the current architecture level"),
+        Line::from("t (Architecture)   Switch to the type browser"),
+        Line::from("t (Architecture map) Switch to the type browser; f toggles full/level"),
         Line::from("d                  Diagnostics browser"),
         Line::from("v                  Open the terminal UML diagram"),
         Line::from("o                  Show source for the selected type, module, or evidence"),
@@ -715,6 +768,8 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from("Diagram: arrows/hjkl pan; Tab/BackTab or n/p focus; c center."),
         Line::from("Diagram: Enter opens details; Esc/b/v returns to the browser."),
         Line::from("Architecture: j/k move, l/Enter open module/type, h up a level, Esc/b exit."),
+        Line::from("Architecture diagram: v from Architecture; f full/level; Ctrl+hjkl pan."),
+        Line::from("Architecture diagram: l/Enter zoom/open; h up; Esc/b/v back to list."),
         Line::from("Resolved relationships navigate to their target type."),
         Line::from(
             "Boundary targets may open in project scope; unresolved targets do not navigate.",
@@ -945,11 +1000,12 @@ mod tests {
         let codebase = fixture_codebase();
         let mut app = App::new(&codebase).expect("app");
         app.handle(Action::OpenHelp);
-        let text = render_text(&mut app, 120, 36);
+        let text = render_text(&mut app, 120, 50);
         assert!(text.contains("Keyboard shortcuts"), "{text}");
         assert!(text.contains("Ctrl+C"), "{text}");
         assert!(text.contains("terminal UML diagram"), "{text}");
         assert!(text.contains("Diagram: arrows"), "{text}");
+        assert!(text.contains("Architecture diagram"), "{text}");
 
         app.handle(Action::Cancel);
         app.handle(Action::OpenScope);
@@ -1063,6 +1119,54 @@ mod tests {
     }
 
     #[test]
+    fn architecture_diagram_renders_modules_containment_and_full_toggle() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("app");
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+        let text = render_text(&mut app, 120, 36);
+        assert!(text.contains("Architecture diagram"), "{text}");
+        assert!(text.contains("api [module]"), "{text}");
+        assert!(text.contains("models [module]"), "{text}");
+        assert!(
+            text.contains("t full") || text.contains("t full/level"),
+            "{text}"
+        );
+
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Confirm);
+        let text = render_text(&mut app, 120, 36);
+        assert!(
+            text.contains("Architecture diagram - models (level)"),
+            "{text}"
+        );
+        assert!(text.contains("Alpha"), "{text}");
+        assert!(text.contains("contains"), "{text}");
+
+        app.handle(Action::ToggleArchitectureFull);
+        let text = render_text(&mut app, 140, 40);
+        assert!(text.contains("full hierarchy"), "{text}");
+        assert!(text.contains("Alpha"), "{text}");
+
+        let text = render_text(&mut app, 20, 6);
+        assert_eq!(text.lines().count(), 6);
+    }
+
+    #[test]
+    fn architecture_diagram_renders_crap_scores() {
+        let codebase = fixture_codebase();
+        let metrics = crate::test_support::fixture_metrics();
+        let mut app = App::new(&codebase)
+            .expect("app")
+            .with_metrics(Some(metrics));
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenArchitectureDiagram);
+        let text = render_text(&mut app, 120, 36);
+        assert!(text.contains("14.5"), "{text}");
+        assert!(text.contains("8.0"), "{text}");
+    }
+
+    #[test]
     fn relationship_panel_shows_direction_boundary_and_incoming_labels() {
         let codebase = fixture_codebase();
         let mut app = App::new(&codebase).expect("app");
@@ -1087,6 +1191,9 @@ mod tests {
                 Some(Color::Yellow),
             ),
             (TerminalDiagramStyle::NodeSelectedText, Some(Color::Yellow)),
+            (TerminalDiagramStyle::ScoreGood, Some(Color::Green)),
+            (TerminalDiagramStyle::ScoreMedium, Some(Color::Yellow)),
+            (TerminalDiagramStyle::ScoreBad, Some(Color::Red)),
             (TerminalDiagramStyle::Boundary, Some(Color::Yellow)),
             (TerminalDiagramStyle::Unresolved, Some(Color::Red)),
             (TerminalDiagramStyle::EdgeDefault, Some(Color::Gray)),

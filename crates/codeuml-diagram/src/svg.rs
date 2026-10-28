@@ -522,6 +522,7 @@ fn node_content(node: &DiagramNode, options: &SvgOptions, max_node_width: f64) -
     if node.qualified_name != node.name {
         lines.push(node.qualified_name.clone());
     }
+    lines.extend(node.extra_lines.iter().cloned());
     if let Some(alias) = &node.alias_of {
         lines.push(format!("= {alias}"));
     }

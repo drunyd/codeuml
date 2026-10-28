@@ -106,7 +106,7 @@ CodeUML 0.1.0
 Project root: /path/to/project
 Source files: 66
 Types: 168
-Relationships: 680
+Relationships: 679
 Diagram nodes: 168
 Diagram edges: 486
 Diagnostics: 0
@@ -350,12 +350,23 @@ Default **level view**:
 
 - Shows the current level’s child modules and types, plus the containing module
   as a context box when inside a module.
+- Node contents are intentionally compact:
+  - short module/type name and kind in the title;
+  - hierarchy `Level n`, followed by a separator rule;
+  - nested child module/type names for module boxes;
+  - fields with `+` public, `-` private, or `~` other visibility;
+  - public methods only, with a `+` marker;
+  - up to eight listed elements, then `+N more` only above that limit.
+- Qualified names are available in the existing type browser/details view; the
+  architecture map keeps boxes compact.
 - Containment edges are labelled `contains`.
-- When a CRAP report is loaded, module/type scores appear in the top-right of
-  their node boxes using the same green/yellow/red bands as the list views.
+- When a CRAP report is loaded, the numeric module/type score appears in the
+  top-right using the same green/yellow/red bands as the list views. The
+  upstream C/M metric dots are intentionally not used.
 - `j`/`k` or `Up`/`Down` move focus among selectable modules/types.
 - `l`/`Right`/`Enter` on a module zooms into it and shows its level.
-- `l`/`Right`/`Enter` on a type opens the existing type browser/details view.
+- `l`/`Right`/`Enter` on a leaf type does nothing; press `t` to open the type
+  browser when you want the full type/details view.
 - `h`/`Left` steps up one level; at the project root it returns to the
   Architecture browser.
 - `f` toggles between level view and the full module/type hierarchy.
@@ -373,7 +384,7 @@ Architecture map keys:
 | Key | Action |
 | --- | --- |
 | `j`/`k`, `Up`/`Down` | Focus next/previous module or type |
-| `l`/`Right`/`Enter` | Zoom into module or open type |
+| `l`/`Right`/`Enter` | Zoom into module; no-op on a leaf type |
 | `h`/`Left` | Step up one level |
 | `f` | Toggle level/full hierarchy |
 | `t` | Switch to the type browser |
@@ -568,6 +579,8 @@ git diff --cached --check
   space is available.
 - The architecture map visualizes containment relationships. It does not yet
   aggregate type dependencies into module-to-module architecture edges.
+- Architecture boxes omit private methods; full member and visibility details
+  remain available in the type browser/details view.
 - Diagram node detail is intentionally compact; use the existing details panel
   for complete members.
 - SVG layout uses a deterministic layered/grid fallback rather than a

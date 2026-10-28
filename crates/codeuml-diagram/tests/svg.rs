@@ -29,6 +29,7 @@ fn node(id: &str, name: &str, kind: TypeKind) -> DiagramNode {
         alias_of: None,
         members: Vec::new(),
         extra_lines: Vec::new(),
+        extra_rule_after: None,
     }
 }
 

@@ -71,6 +71,8 @@ pub struct DiagramNode {
     /// View-specific lines used by specialized renderers (for example the
     /// architecture map). Type projections normally leave this empty.
     pub extra_lines: Vec<String>,
+    /// Optional separator rule after this many extra lines.
+    pub extra_rule_after: Option<usize>,
 }
 
 /// One end of a diagram edge.

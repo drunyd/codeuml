@@ -26,6 +26,8 @@ pub(crate) struct DiagramLayoutOptions {
     pub max_canvas_width: u16,
     /// Optional top-right CRAP annotation per node.
     pub node_scores: BTreeMap<SymbolId, TerminalNodeScore>,
+    /// Show the qualified name as a body line when it differs from the title.
+    pub show_qualified: bool,
 }
 
 impl Default for DiagramLayoutOptions {
@@ -35,6 +37,7 @@ impl Default for DiagramLayoutOptions {
             max_node_width: 38,
             max_canvas_width: 200,
             node_scores: BTreeMap::new(),
+            show_qualified: true,
         }
     }
 }
@@ -78,6 +81,7 @@ pub(crate) struct TerminalDiagramNode {
     pub rect: DiagramRect,
     pub title: String,
     pub lines: Vec<String>,
+    pub rule_after: Option<usize>,
     pub score: Option<TerminalNodeScore>,
 }
 
@@ -401,6 +405,7 @@ fn style_for_visual(visual: EdgeVisual) -> TerminalDiagramStyle {
 struct NodeContent {
     title: String,
     lines: Vec<String>,
+    rule_after: Option<usize>,
     width: u16,
     height: u16,
 }
@@ -490,6 +495,7 @@ fn layout_nodes(
             rect: rects[index],
             title: content.title,
             lines: content.lines,
+            rule_after: content.rule_after,
             score: options.node_scores.get(&projected.id).cloned(),
         })
         .collect();
@@ -678,7 +684,7 @@ fn terminal_node_content(
         format!("{} [{} {}]", node.name, node.visibility, node.kind)
     };
     let mut lines = Vec::new();
-    if node.qualified_name != node.name {
+    if options.show_qualified && node.qualified_name != node.name {
         lines.push(node.qualified_name.clone());
     }
     lines.extend(node.extra_lines.iter().cloned());
@@ -723,10 +729,16 @@ fn terminal_node_content(
         .into_iter()
         .map(|line| truncate_text(&line, text_width))
         .collect();
-    let height = 3u16.saturating_add(lines.len() as u16);
+    let rule_after = node
+        .extra_rule_after
+        .filter(|index| *index > 0 && *index < lines.len());
+    let height = 3u16
+        .saturating_add(lines.len() as u16)
+        .saturating_add(u16::from(rule_after.is_some()));
     NodeContent {
         title,
         lines,
+        rule_after,
         width,
         height,
     }
@@ -1149,6 +1161,7 @@ fn draw_boundaries(canvas: &mut TerminalCanvas, boundaries: &[TerminalDiagramBou
                 dashed: true,
             },
             None,
+            None,
         );
     }
 }
@@ -1180,6 +1193,7 @@ fn draw_nodes(
                 text,
                 dashed: false,
             },
+            node.rule_after,
             node.score.as_ref(),
         );
     }
@@ -1206,6 +1220,7 @@ fn draw_box(
     title: &str,
     lines: &[String],
     style: BoxStyle,
+    rule_after: Option<usize>,
     score: Option<&TerminalNodeScore>,
 ) {
     canvas.fill_rect(rect, style.text);
@@ -1235,16 +1250,22 @@ fn draw_box(
             title,
             style.text,
         );
+        let mut y = rect.y.saturating_add(2);
         for (index, line) in lines.iter().enumerate() {
-            if rect.y.saturating_add(2) + index as u16 >= rect.bottom().saturating_sub(1) {
+            if rule_after == Some(index) {
+                if y >= rect.bottom().saturating_sub(1) {
+                    break;
+                }
+                for x in rect.x.saturating_add(1)..rect.right().saturating_sub(1) {
+                    canvas.put_char(x, y, horizontal, style.border);
+                }
+                y = y.saturating_add(1);
+            }
+            if y >= rect.bottom().saturating_sub(1) {
                 break;
             }
-            canvas.put_text(
-                rect.x.saturating_add(2),
-                rect.y.saturating_add(2) + index as u16,
-                line,
-                style.text,
-            );
+            canvas.put_text(rect.x.saturating_add(2), y, line, style.text);
+            y = y.saturating_add(1);
         }
         if let Some(score) = score {
             let score_width = UnicodeWidthStr::width(score.text.as_str()) as u16;
@@ -1328,6 +1349,7 @@ mod tests {
                 })
                 .collect(),
             extra_lines: Vec::new(),
+            extra_rule_after: None,
         }
     }
 

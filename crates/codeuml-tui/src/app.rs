@@ -23,6 +23,7 @@ use crate::terminal_diagram::{
 
 const PAGE_STEP: usize = 10;
 const HISTORY_LIMIT: usize = 100;
+const ARCHITECTURE_DIAGRAM_LIST_LIMIT: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
@@ -712,6 +713,7 @@ impl<'a> App<'a> {
             self.codebase,
             self.architecture_parent.as_ref(),
             self.architecture_full,
+            ARCHITECTURE_DIAGRAM_LIST_LIMIT,
         );
         self.architecture_diagram_selectable = view.selectable;
         if self
@@ -724,6 +726,7 @@ impl<'a> App<'a> {
         }
         let mut options = self.diagram_options.clone();
         options.node_scores = self.architecture_diagram_scores();
+        options.show_qualified = false;
         self.architecture_diagram_layout = layout_terminal_diagram(&view.projection, &options);
         self.architecture_diagram_canvas = render_diagram_canvas(
             &self.architecture_diagram_layout,
@@ -793,26 +796,7 @@ impl<'a> App<'a> {
             self.status = format!("Opened {}.", self.architecture_path_label());
             return;
         }
-        self.open_type_from_architecture(id);
-    }
-
-    fn open_type_from_architecture(&mut self, id: SymbolId) {
-        let Some(declaration) = self.codebase.type_by_id(&id) else {
-            self.status = "Selected type is no longer available.".to_owned();
-            return;
-        };
-        let scope = declaration
-            .module
-            .clone()
-            .map(|module| DiagramScope::Module { module })
-            .unwrap_or(DiagramScope::Project);
-        if let Err(error) = self.replace_projection(scope, Some(id.clone())) {
-            self.status = format!("Cannot open type: {error}");
-            return;
-        }
-        self.mode = Mode::Browse;
-        self.focus = Focus::Types;
-        self.status = format!("Opened {}.", self.selected_status_value());
+        self.status = "Leaf type selected; press t to open the type browser.".to_owned();
     }
 
     fn ascend_architecture_diagram(&mut self) {
@@ -2631,6 +2615,17 @@ mod tests {
         app.handle(Action::NavigateDown);
         let models = SymbolId::declaration("src/models.rs", "models");
         assert_eq!(app.architecture_visual_selected.as_ref(), Some(&models));
+        let models_rect = app
+            .architecture_diagram_layout
+            .node_rect(&models)
+            .expect("models rect");
+        assert_eq!(
+            app.architecture_diagram_canvas
+                .cell(models_rect.x + 1, models_rect.y + 3)
+                .expect("rule cell")
+                .ch,
+            '─'
+        );
 
         app.handle(Action::Confirm);
         assert_eq!(app.architecture_parent.as_ref(), Some(&models));
@@ -2661,8 +2656,12 @@ mod tests {
         app.handle(Action::NavigateDown);
         app.handle(Action::Confirm);
         app.handle(Action::Confirm);
-        assert_eq!(app.mode(), Mode::Browse);
-        assert_eq!(selected_name(&app), Some("Api"));
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+        let selected = app.architecture_visual_selected.clone();
+        app.handle(Action::Descend);
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+        assert_eq!(app.architecture_visual_selected, selected);
+        assert!(app.status().contains("Leaf type"));
     }
 
     #[test]

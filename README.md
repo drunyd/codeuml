@@ -19,6 +19,7 @@ conservatively, and projects a deterministic graph.
 | `codeuml-core` | Language-neutral model, stable IDs, relationships, diagnostics |
 | `codeuml-analysis` | Cargo discovery, orchestration, reference resolution, validation |
 | `codeuml-lang-rust` | `syn`-based Rust declarations, modules, and reference extraction |
+| `codeuml-metrics` | CRAP report and `codeuml.toml` reader, score lookup and bands |
 | `codeuml-diagram` | Deterministic projection, layered layout, and standalone SVG rendering |
 | `codeuml-tui` | Ratatui/Crossterm browser, terminal UML layout/canvas, input, lifecycle |
 
@@ -211,6 +212,42 @@ symlinks), and are regular files under 2 MiB. Nothing is ever written.
 Following a relationship records where you came from. `Backspace` returns to
 the previous type and scope (up to 100 steps); the header shows the depth.
 Type details also list each field, variant, and method with its source line.
+
+### CRAP scores
+
+If a [`crapper`](https://github.com/unclebob/crap4clj)-style report exists at
+`.metrics/crap.edn`, the browser shows each module, type, and method's CRAP score
+on the same line as its name, right-aligned and colour-coded:
+
+| Colour | Default band |
+| --- | --- |
+| green | score <= 6 |
+| yellow | score <= 12 |
+| red | above 12 |
+
+- **Methods** show their own score (the worst one when a name appears more than
+  once on a type). **Types** show the worst score among their methods, and
+  **modules** the worst among everything in them and their sub-modules, so one
+  bad function stays visible from every level above it.
+- Scores appear in the type list, all three architecture panes, and the type
+  details (on the `Name:` line and each method). The header legend shows the
+  active limits. The number is always printed, so colour is never the only cue.
+- Limits and the report path are configured in `codeuml.toml` at the project
+  root; both settings are optional:
+
+  ```toml
+  [crap]
+  good_max = 6
+  medium_max = 12
+  report = ".metrics/crap.edn"
+  ```
+
+- A missing default report is silently ignored. A broken `codeuml.toml`,
+  a missing configured report, or an unreadable report is reported as a warning
+  in the diagnostics view (`d`) and CodeUML falls back to the defaults.
+- Report namespaces use underscores (`codeuml_tui::app::App`) and are matched to
+  package names with hyphens (`codeuml-tui`). Functions outside any shown type or
+  module, such as free functions in a binary's `main.rs`, are not displayed.
 
 ### Terminal UML diagram view
 

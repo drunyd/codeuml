@@ -1,0 +1,12 @@
+[package]
+name = "codeuml-metrics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+toml = "1.1.8"
+
+[lints]
+workspace = true

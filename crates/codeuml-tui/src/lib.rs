@@ -8,6 +8,7 @@ mod app;
 mod format;
 mod input;
 mod render;
+mod score;
 mod source;
 mod terminal;
 mod terminal_diagram;

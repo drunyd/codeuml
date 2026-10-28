@@ -5,6 +5,25 @@ use codeuml_core::{
     RelationshipEvidence, RelationshipKind, SourceLocation, SymbolId, TypeDecl, TypeKind, Variant,
     Visibility,
 };
+use codeuml_metrics::{CrapEntry, CrapThresholds, Metrics};
+
+/// Scores matching `fixture_codebase`: `models::Alpha` is bad (14.5) through
+/// `find`, `measure` is good, the `api` module has a medium free function.
+pub(crate) fn fixture_metrics() -> Metrics {
+    let entry = |namespace: &str, name: &str, crap: f64| CrapEntry {
+        name: name.to_owned(),
+        namespace: namespace.to_owned(),
+        crap,
+    };
+    Metrics::new(
+        &[
+            entry("models::Alpha", "find", 14.5),
+            entry("models::Alpha", "measure", 3.0),
+            entry("api", "helper", 8.0),
+        ],
+        CrapThresholds::default(),
+    )
+}
 
 pub(crate) struct TempDir(pub PathBuf);
 

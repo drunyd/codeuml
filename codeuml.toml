@@ -1,0 +1,10 @@
+# CodeUML project settings.
+
+[crap]
+# Scores at or below `good_max` are shown green, at or below `medium_max`
+# yellow, and anything above red.
+good_max = 12
+medium_max = 20
+
+# Report written by `crapper`, relative to this file.
+report = ".metrics/crap.edn"

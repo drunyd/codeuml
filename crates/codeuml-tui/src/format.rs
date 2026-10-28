@@ -1,89 +1,151 @@
 use codeuml_core::{Codebase, Diagnostic, GenericParam, TypeDecl};
 use codeuml_diagram::{DiagramEndpoint, DiagramProjection};
+use codeuml_metrics::Metrics;
 
-pub(crate) fn detail_lines(codebase: &Codebase, declaration: &TypeDecl) -> Vec<String> {
-    let mut lines = header_lines(codebase, declaration);
-    append_generics(&mut lines, declaration);
-    append_fields(&mut lines, declaration);
-    append_variants(&mut lines, declaration);
-    append_methods(&mut lines, declaration);
-    lines
+use crate::score::CrapScore;
+
+/// One line of a type's details, optionally carrying a CRAP score to show
+/// right-aligned.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DetailRow {
+    pub text: String,
+    pub crap: Option<CrapScore>,
 }
 
-fn header_lines(codebase: &Codebase, declaration: &TypeDecl) -> Vec<String> {
-    let mut lines = vec![
-        format!("Name: {}", declaration.name),
-        format!("Kind: {}", declaration.kind),
-        format!("Qualified: {}", declaration.qualified_name),
-        format!("Visibility: {}", declaration.visibility),
-        format!(
+impl DetailRow {
+    fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            crap: None,
+        }
+    }
+
+    fn scored(text: impl Into<String>, crap: Option<CrapScore>) -> Self {
+        Self {
+            text: text.into(),
+            crap,
+        }
+    }
+}
+
+fn score_of(metrics: Option<&Metrics>, value: Option<f64>) -> Option<CrapScore> {
+    let metrics = metrics?;
+    value.map(|value| CrapScore::new(metrics.level(value), value))
+}
+
+pub(crate) fn detail_rows(
+    codebase: &Codebase,
+    declaration: &TypeDecl,
+    metrics: Option<&Metrics>,
+) -> Vec<DetailRow> {
+    let mut rows = header_rows(codebase, declaration, metrics);
+    append_generics(&mut rows, declaration);
+    append_fields(&mut rows, declaration);
+    append_variants(&mut rows, declaration);
+    append_methods(&mut rows, declaration, metrics);
+    rows
+}
+
+fn header_rows(
+    codebase: &Codebase,
+    declaration: &TypeDecl,
+    metrics: Option<&Metrics>,
+) -> Vec<DetailRow> {
+    let type_score = score_of(
+        metrics,
+        metrics.and_then(|metrics| metrics.type_score(&declaration.qualified_name)),
+    );
+    let mut rows = vec![
+        DetailRow::scored(format!("Name: {}", declaration.name), type_score),
+        DetailRow::plain(format!("Kind: {}", declaration.kind)),
+        DetailRow::plain(format!("Qualified: {}", declaration.qualified_name)),
+        DetailRow::plain(format!("Visibility: {}", declaration.visibility)),
+        DetailRow::plain(format!(
             "Source: {}:{}:{}",
             declaration.location.file.display(),
             declaration.location.line,
             declaration.location.column
-        ),
+        )),
     ];
     if let Some(module_id) = &declaration.module {
         if let Some(module) = codebase.module(module_id) {
-            lines.push(format!("Module: {}", module.qualified_name));
+            rows.push(DetailRow::plain(format!(
+                "Module: {}",
+                module.qualified_name
+            )));
         }
     }
     if let Some(alias) = &declaration.alias_of {
-        lines.push(format!("Alias of: {alias}"));
+        rows.push(DetailRow::plain(format!("Alias of: {alias}")));
     }
-    lines
+    rows
 }
 
-fn append_generics(lines: &mut Vec<String>, declaration: &TypeDecl) {
+fn append_generics(rows: &mut Vec<DetailRow>, declaration: &TypeDecl) {
     if declaration.generics.is_empty() {
         return;
     }
-    lines.push(String::new());
-    lines.push(format!("Generics ({})", declaration.generics.len()));
+    rows.push(DetailRow::plain(String::new()));
+    rows.push(DetailRow::plain(format!(
+        "Generics ({})",
+        declaration.generics.len()
+    )));
     for generic in &declaration.generics {
-        lines.push(format!("  {}", generic_text(generic)));
+        rows.push(DetailRow::plain(format!("  {}", generic_text(generic))));
     }
 }
 
-fn append_fields(lines: &mut Vec<String>, declaration: &TypeDecl) {
+fn append_fields(rows: &mut Vec<DetailRow>, declaration: &TypeDecl) {
     if declaration.fields.is_empty() {
         return;
     }
-    lines.push(String::new());
-    lines.push(format!("Fields ({})", declaration.fields.len()));
+    rows.push(DetailRow::plain(String::new()));
+    rows.push(DetailRow::plain(format!(
+        "Fields ({})",
+        declaration.fields.len()
+    )));
     for field in &declaration.fields {
         let type_name = field.type_name.as_deref().unwrap_or("<unknown>");
-        lines.push(format!(
+        rows.push(DetailRow::plain(format!(
             "  {} {}: {}  (line {})",
             field.visibility, field.name, type_name, field.location.line
-        ));
+        )));
     }
 }
 
-fn append_variants(lines: &mut Vec<String>, declaration: &TypeDecl) {
+fn append_variants(rows: &mut Vec<DetailRow>, declaration: &TypeDecl) {
     if declaration.variants.is_empty() {
         return;
     }
-    lines.push(String::new());
-    lines.push(format!("Variants ({})", declaration.variants.len()));
+    rows.push(DetailRow::plain(String::new()));
+    rows.push(DetailRow::plain(format!(
+        "Variants ({})",
+        declaration.variants.len()
+    )));
     for variant in &declaration.variants {
-        lines.push(format!(
+        rows.push(DetailRow::plain(format!(
             "  {}  (line {})",
             variant.name, variant.location.line
-        ));
+        )));
         for field in &variant.fields {
             let type_name = field.type_name.as_deref().unwrap_or("<unknown>");
-            lines.push(format!("    {}: {}", field.name, type_name));
+            rows.push(DetailRow::plain(format!(
+                "    {}: {}",
+                field.name, type_name
+            )));
         }
     }
 }
 
-fn append_methods(lines: &mut Vec<String>, declaration: &TypeDecl) {
+fn append_methods(rows: &mut Vec<DetailRow>, declaration: &TypeDecl, metrics: Option<&Metrics>) {
     if declaration.methods.is_empty() {
         return;
     }
-    lines.push(String::new());
-    lines.push(format!("Methods ({})", declaration.methods.len()));
+    rows.push(DetailRow::plain(String::new()));
+    rows.push(DetailRow::plain(format!(
+        "Methods ({})",
+        declaration.methods.len()
+    )));
     for method in &declaration.methods {
         let parameters = method
             .parameters
@@ -97,7 +159,7 @@ fn append_methods(lines: &mut Vec<String>, declaration: &TypeDecl) {
             .as_ref()
             .map(|return_type| format!(" -> {return_type}"))
             .unwrap_or_default();
-        lines.push(format!(
+        let text = format!(
             "  {} {}{}{}({}){}  (line {})",
             method.visibility,
             if method.is_static { "static " } else { "" },
@@ -106,7 +168,10 @@ fn append_methods(lines: &mut Vec<String>, declaration: &TypeDecl) {
             parameters,
             return_text,
             method.location.line
-        ));
+        );
+        let value = metrics
+            .and_then(|metrics| metrics.method_score(&declaration.qualified_name, &method.name));
+        rows.push(DetailRow::scored(text, score_of(metrics, value)));
     }
 }
 
@@ -177,6 +242,13 @@ pub(crate) fn diagnostic_line(diagnostic: &Diagnostic) -> String {
 mod tests {
     use super::*;
     use crate::test_support::{fixture_codebase, type_named};
+
+    fn detail_lines(codebase: &Codebase, declaration: &TypeDecl) -> Vec<String> {
+        detail_rows(codebase, declaration, None)
+            .into_iter()
+            .map(|row| row.text)
+            .collect()
+    }
 
     #[test]
     fn detail_sections_cover_generics_fields_variants_methods_and_empty_sections() {

@@ -8,6 +8,7 @@ use codeuml_core::{Codebase, Diagnostic};
 use codeuml_diagram::{
     project as project_diagram, render_projection_svg, DiagramScope, ProjectionError, SvgOptions,
 };
+use codeuml_metrics::Metrics;
 use codeuml_tui::TuiError;
 use thiserror::Error;
 
@@ -191,8 +192,22 @@ pub fn run_svg(
 /// Launch the interactive terminal browser. Analysis happens once before the
 /// terminal is entered.
 pub fn run_interactive(cli: Cli) -> Result<(), CliError> {
-    let loaded = load_project(&cli)?;
-    codeuml_tui::run_browser(&loaded.codebase, loaded.path.as_path()).map_err(CliError::from)
+    let mut loaded = load_project(&cli)?;
+    let metrics = load_metrics(&mut loaded);
+    codeuml_tui::run_browser(&loaded.codebase, loaded.path.as_path(), metrics)
+        .map_err(CliError::from)
+}
+
+/// Load the optional CRAP overlay for a project. Problems with the config or
+/// report become warnings in the diagnostics list rather than failing the run.
+pub fn load_metrics(loaded: &mut LoadedProject) -> Option<Metrics> {
+    let overlay = codeuml_metrics::load(loaded.path.as_path());
+    for warning in overlay.warnings {
+        loaded
+            .codebase
+            .add_diagnostic(Diagnostic::warning(warning, None).with_code("metrics::load"));
+    }
+    overlay.metrics
 }
 
 fn validate_summary_options(cli: &Cli) -> Result<(), CliError> {

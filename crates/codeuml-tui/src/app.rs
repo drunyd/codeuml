@@ -9,7 +9,10 @@ use codeuml_diagram::{
     ProjectionError,
 };
 
-use crate::format;
+use codeuml_metrics::Metrics;
+
+use crate::format::{self, DetailRow};
+use crate::score::CrapScore;
 use crate::source::{self, SourceView};
 use crate::terminal_diagram::{
     layout_terminal_diagram, render_diagram_canvas, DiagramLayoutOptions, TerminalCanvas,
@@ -80,7 +83,7 @@ struct HistoryEntry {
     selected: Option<SymbolId>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ArchitecturePreview {
     Children {
         title: String,
@@ -88,16 +91,17 @@ pub(crate) enum ArchitecturePreview {
     },
     Details {
         title: String,
-        lines: Vec<String>,
+        lines: Vec<DetailRow>,
     },
     Empty,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ArchitectureRow {
     pub id: SymbolId,
     pub label: String,
     pub is_module: bool,
+    pub crap: Option<CrapScore>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -174,6 +178,7 @@ pub(crate) struct App<'a> {
     architecture_parent: Option<SymbolId>,
     architecture_selected: usize,
     project_root: Option<PathBuf>,
+    metrics: Option<Metrics>,
     source: Option<SourceView>,
     source_scroll: usize,
     source_return: Mode,
@@ -213,6 +218,7 @@ impl<'a> App<'a> {
             architecture_parent: None,
             architecture_selected: 0,
             project_root: None,
+            metrics: None,
             source: None,
             source_scroll: 0,
             source_return: Mode::Browse,
@@ -326,10 +332,42 @@ impl<'a> App<'a> {
     }
 
     pub(crate) fn detail_lines(&self) -> Vec<String> {
+        self.detail_rows().into_iter().map(|row| row.text).collect()
+    }
+
+    pub(crate) fn detail_rows(&self) -> Vec<DetailRow> {
         let Some(declaration) = self.selected_declaration() else {
-            return vec!["No type selected.".to_owned()];
+            return vec![DetailRow {
+                text: "No type selected.".to_owned(),
+                crap: None,
+            }];
         };
-        format::detail_lines(self.codebase, declaration)
+        format::detail_rows(self.codebase, declaration, self.metrics.as_ref())
+    }
+
+    pub(crate) fn with_metrics(mut self, metrics: Option<Metrics>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    /// Looks up a CRAP score and classifies it; `None` when no report is loaded
+    /// or it has nothing for the element.
+    fn crap_score(&self, pick: impl FnOnce(&Metrics) -> Option<f64>) -> Option<CrapScore> {
+        let metrics = self.metrics.as_ref()?;
+        pick(metrics).map(|value| CrapScore::new(metrics.level(value), value))
+    }
+
+    pub(crate) fn type_crap(&self, qualified_name: &str) -> Option<CrapScore> {
+        self.crap_score(|metrics| metrics.type_score(qualified_name))
+    }
+
+    /// One-line explanation of the colour bands, shown when scores are loaded.
+    pub(crate) fn crap_legend(&self) -> Option<String> {
+        let thresholds = self.metrics.as_ref()?.thresholds();
+        Some(format!(
+            "CRAP: green <= {}, yellow <= {}, red above",
+            thresholds.good_max, thresholds.medium_max
+        ))
     }
 
     fn selected_declaration(&self) -> Option<&'a TypeDecl> {
@@ -746,6 +784,7 @@ impl<'a> App<'a> {
                 id: module.id.clone(),
                 label: format!("{}/", module.name),
                 is_module: true,
+                crap: self.crap_score(|metrics| metrics.module_score(&module.qualified_name)),
             });
         }
         for declaration in self
@@ -758,6 +797,7 @@ impl<'a> App<'a> {
                 id: declaration.id.clone(),
                 label: format!("{}  [{}]", declaration.name, declaration.kind),
                 is_module: false,
+                crap: self.type_crap(&declaration.qualified_name),
             });
         }
         rows.sort_by(|left, right| {
@@ -813,7 +853,7 @@ impl<'a> App<'a> {
             match self.codebase.type_by_id(&row.id) {
                 Some(declaration) => ArchitecturePreview::Details {
                     title: declaration.qualified_name.clone(),
-                    lines: format::detail_lines(self.codebase, declaration),
+                    lines: format::detail_rows(self.codebase, declaration, self.metrics.as_ref()),
                 },
                 None => ArchitecturePreview::Empty,
             }
@@ -1549,6 +1589,76 @@ mod tests {
 
     use super::*;
     use crate::test_support::{fixture_codebase, type_named};
+
+    #[test]
+    fn crap_scores_aggregate_into_types_modules_and_details() {
+        use codeuml_metrics::CrapLevel;
+
+        let codebase = fixture_codebase();
+        let metrics = crate::test_support::fixture_metrics();
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_metrics(Some(metrics));
+
+        let alpha = app.type_crap("models::Alpha").expect("alpha score");
+        assert_eq!((alpha.value, alpha.level), (14.5, CrapLevel::Bad));
+        assert!(app.type_crap("api::Api").is_none());
+
+        let rows = app.detail_rows();
+        assert_eq!(rows[0].crap.map(|score| score.value), Some(14.5));
+        let method = |name: &str| {
+            rows.iter()
+                .find(|row| row.text.contains(name))
+                .and_then(|row| row.crap)
+        };
+        assert_eq!(
+            method("find(").map(|score| score.level),
+            Some(CrapLevel::Bad)
+        );
+        assert_eq!(
+            method("measure(").map(|score| score.level),
+            Some(CrapLevel::Good)
+        );
+        assert!(rows
+            .iter()
+            .filter(|row| row.text.starts_with("Kind") || row.text.starts_with("  pub beta"))
+            .all(|row| row.crap.is_none()));
+
+        app.handle(Action::OpenArchitecture);
+        let module = |app: &App<'_>, name: &str| {
+            app.architecture_rows()
+                .into_iter()
+                .find(|row| row.label.starts_with(name))
+                .and_then(|row| row.crap)
+        };
+        let api = module(&app, "api/").expect("api module score");
+        assert_eq!((api.value, api.level), (8.0, CrapLevel::Medium));
+        let models = module(&app, "models/").expect("models module score");
+        assert_eq!((models.value, models.level), (14.5, CrapLevel::Bad));
+
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Descend);
+        assert_eq!(app.architecture_path_label(), "models");
+        assert!(app
+            .architecture_rows()
+            .iter()
+            .any(|row| !row.is_module && row.crap.is_some()));
+        assert_eq!(
+            app.crap_legend().as_deref(),
+            Some("CRAP: green <= 6, yellow <= 12, red above")
+        );
+    }
+
+    #[test]
+    fn nothing_is_scored_without_loaded_metrics() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        assert!(app.type_crap("models::Alpha").is_none());
+        assert!(app.crap_legend().is_none());
+        assert!(app.detail_rows().iter().all(|row| row.crap.is_none()));
+        app.handle(Action::OpenArchitecture);
+        assert!(app.architecture_rows().iter().all(|row| row.crap.is_none()));
+    }
 
     fn selected_name<'a>(app: &'a App<'_>) -> Option<&'a str> {
         app.selected_node().map(|node| node.name.as_str())

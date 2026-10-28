@@ -6,6 +6,7 @@ members = [
     "crates/codeuml-core",
     "crates/codeuml-diagram",
     "crates/codeuml-lang-rust",
+    "crates/codeuml-metrics",
     "crates/codeuml-tui",
 ]
 

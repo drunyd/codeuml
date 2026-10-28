@@ -1,3 +1,4 @@
+use codeuml_metrics::CrapLevel;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -8,9 +9,45 @@ use ratatui::{
 
 use crate::{
     app::{App, ArchitecturePreview, ArchitectureRow, Focus, Mode},
-    format,
+    format::{self, DetailRow},
+    score::{fit_row, CrapScore},
     terminal_diagram::TerminalDiagramStyle,
 };
+
+/// Columns a list row can use: the block borders and the highlight symbol take 4.
+fn list_content_width(area: Rect) -> usize {
+    usize::from(area.width.saturating_sub(4))
+}
+
+fn crap_color(level: CrapLevel) -> Color {
+    match level {
+        CrapLevel::Good => Color::Green,
+        CrapLevel::Medium => Color::Yellow,
+        CrapLevel::Bad => Color::Red,
+    }
+}
+
+/// A row with the label on the left and the score right-aligned and colour-coded.
+fn score_line(
+    label: &str,
+    label_style: Style,
+    score: Option<CrapScore>,
+    width: usize,
+) -> Line<'static> {
+    let score_text = score.map(|score| score.text());
+    let (label, padding) = fit_row(label, score_text.as_deref(), width);
+    let mut spans = vec![Span::styled(label, label_style)];
+    if let (Some(score), Some(text), Some(padding)) = (score, score_text, padding) {
+        spans.push(Span::raw(padding));
+        spans.push(Span::styled(
+            text,
+            Style::default()
+                .fg(crap_color(score.level))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    Line::from(spans)
+}
 
 pub(crate) fn render(frame: &mut Frame<'_>, app: &mut App<'_>) {
     let chunks = Layout::vertical([
@@ -250,9 +287,12 @@ fn render_architecture(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
             }
         }
         ArchitecturePreview::Details { title, lines } => frame.render_widget(
-            Paragraph::new(lines.join("\n"))
-                .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(Wrap { trim: false }),
+            Paragraph::new(detail_lines(
+                &lines,
+                usize::from(preview_area.width.saturating_sub(2)),
+            ))
+            .block(Block::default().borders(Borders::ALL).title(title))
+            .wrap(Wrap { trim: false }),
             preview_area,
         ),
         ArchitecturePreview::Empty => frame.render_widget(
@@ -264,6 +304,25 @@ fn render_architecture(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
     }
 }
 
+fn detail_lines(rows: &[DetailRow], width: usize) -> Vec<Line<'static>> {
+    rows.iter()
+        .map(|row| match row.crap {
+            Some(score) => score_line(&row.text, Style::default(), Some(score), width),
+            None => Line::from(row.text.clone()),
+        })
+        .collect()
+}
+
+/// The selected row of an active list keeps white text on the blue highlight;
+/// the highlight itself sets no foreground so score colours survive on it.
+fn architecture_label_style(is_module: bool, selected: bool) -> Style {
+    match (selected, is_module) {
+        (true, _) => Style::default().fg(Color::White),
+        (false, true) => Style::default().fg(Color::Cyan),
+        (false, false) => Style::default(),
+    }
+}
+
 fn render_architecture_list(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -272,15 +331,13 @@ fn render_architecture_list(
     selected: Option<usize>,
     active: bool,
 ) {
+    let width = list_content_width(area);
     let items: Vec<ListItem<'_>> = rows
         .iter()
-        .map(|row| {
-            let style = if row.is_module {
-                Style::default().fg(Color::Cyan)
-            } else {
-                Style::default()
-            };
-            ListItem::new(Line::from(Span::styled(row.label.clone(), style)))
+        .enumerate()
+        .map(|(index, row)| {
+            let style = architecture_label_style(row.is_module, active && selected == Some(index));
+            ListItem::new(score_line(&row.label, style, row.crap, width))
         })
         .collect();
     let mut state = ListState::default();
@@ -288,7 +345,6 @@ fn render_architecture_list(
     let highlight = if active {
         Style::default()
             .bg(Color::Blue)
-            .fg(Color::White)
             .add_modifier(Modifier::BOLD)
     } else {
         Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
@@ -390,14 +446,18 @@ fn render_header(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
             }
         )),
     ]);
-    let header = Paragraph::new(vec![
-        title,
-        Line::from(Span::styled(
-            app.analysis_label(),
+    let mut status = vec![Span::styled(
+        app.analysis_label(),
+        Style::default().fg(Color::DarkGray),
+    )];
+    if let Some(legend) = app.crap_legend() {
+        status.push(Span::styled(
+            format!("  |  {legend}"),
             Style::default().fg(Color::DarkGray),
-        )),
-    ])
-    .block(Block::default().borders(Borders::ALL).title("CodeUML"));
+        ));
+    }
+    let header = Paragraph::new(vec![title, Line::from(status)])
+        .block(Block::default().borders(Borders::ALL).title("CodeUML"));
     frame.render_widget(header, area);
 }
 
@@ -449,25 +509,37 @@ fn render_type_list(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
         return;
     }
 
+    let width = list_content_width(area);
+    let selected = app.selected_visible_index();
     let items: Vec<ListItem<'_>> = nodes
         .iter()
-        .map(|node| {
+        .enumerate()
+        .map(|(index, node)| {
             let label = if node.qualified_name == node.name {
                 format!("{}  [{}]", node.name, node.kind)
             } else {
                 format!("{}  [{}]  {}", node.name, node.kind, node.qualified_name)
             };
-            ListItem::new(Line::from(label))
+            let style = if selected == Some(index) {
+                Style::default().fg(Color::White)
+            } else {
+                Style::default()
+            };
+            ListItem::new(score_line(
+                &label,
+                style,
+                app.type_crap(&node.qualified_name),
+                width,
+            ))
         })
         .collect();
     let mut state = ListState::default();
-    state.select(app.selected_visible_index());
+    state.select(selected);
     let list = List::new(items)
         .block(block)
         .highlight_style(
             Style::default()
                 .bg(Color::Blue)
-                .fg(Color::White)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("> ");
@@ -479,7 +551,11 @@ fn render_details(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
         .selected_node()
         .map(|node| format!("Details: {}", node.name))
         .unwrap_or_else(|| "Details".to_owned());
-    let paragraph = Paragraph::new(app.detail_lines().join("\n"))
+    let lines = detail_lines(
+        &app.detail_rows(),
+        usize::from(area.width.saturating_sub(2)),
+    );
+    let paragraph = Paragraph::new(lines)
         .block(Block::default().borders(Borders::ALL).title(title))
         .scroll((app.detail_scroll(), 0))
         .wrap(Wrap { trim: false });
@@ -701,7 +777,99 @@ mod tests {
     use super::*;
     use crate::app::Action;
     use crate::terminal_diagram::TerminalCanvas;
-    use crate::test_support::fixture_codebase;
+    use crate::test_support::{fixture_codebase, fixture_metrics};
+
+    #[test]
+    fn score_lines_are_right_aligned_and_colour_coded_by_band() {
+        let line = |level, value, width| {
+            score_line(
+                "Alpha",
+                Style::default(),
+                Some(CrapScore::new(level, value)),
+                width,
+            )
+        };
+        for (level, color) in [
+            (CrapLevel::Good, Color::Green),
+            (CrapLevel::Medium, Color::Yellow),
+            (CrapLevel::Bad, Color::Red),
+        ] {
+            let line = line(level, 14.5, 20);
+            assert_eq!(line.width(), 20);
+            let score = line.spans.last().expect("score span");
+            assert_eq!(score.content, "14.5");
+            assert_eq!(score.style.fg, Some(color));
+        }
+
+        let narrow = line(CrapLevel::Bad, 14.5, 5);
+        assert_eq!(narrow.spans.len(), 1);
+        assert_eq!(narrow.width(), 5);
+        let unscored = score_line("Alpha", Style::default(), None, 20);
+        assert_eq!(unscored.spans.len(), 1);
+        assert_eq!(unscored.width(), 5);
+    }
+
+    #[test]
+    fn type_list_architecture_and_details_show_scores_and_the_legend() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("app")
+            .with_metrics(Some(fixture_metrics()));
+        let text = render_text(&mut app, 120, 36);
+        assert!(
+            text.contains("CRAP: green <= 6, yellow <= 12, red above"),
+            "{text}"
+        );
+        let alpha_row: String = text
+            .lines()
+            .find(|line| line.contains("Alpha  [struct]"))
+            .expect("alpha row")
+            .chars()
+            .take(36)
+            .collect();
+        assert!(alpha_row.ends_with("14.5│"), "{alpha_row}");
+        let detail_row = text
+            .lines()
+            .find(|line| line.contains("find(id: u64)"))
+            .expect("method row");
+        assert!(detail_row.contains("14.5"), "{detail_row}");
+        let measure_row = text
+            .lines()
+            .find(|line| line.contains("measure()"))
+            .expect("method row");
+        assert!(measure_row.contains("3.0"), "{measure_row}");
+
+        app.handle(Action::OpenArchitecture);
+        let text = render_text(&mut app, 120, 36);
+        let api_row = text
+            .lines()
+            .find(|line| line.contains("> api/"))
+            .expect("api row");
+        assert!(api_row.contains("8.0"), "{api_row}");
+        assert!(text.contains("14.5"), "{text}");
+    }
+
+    #[test]
+    fn selected_rows_keep_their_score_colour() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("app")
+            .with_metrics(Some(fixture_metrics()));
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).expect("terminal");
+        terminal
+            .draw(|frame| render(frame, &mut app))
+            .expect("draw");
+        let buffer = terminal.backend().buffer();
+
+        let selected_score = (0..buffer.area.height)
+            .flat_map(|y| (0..buffer.area.width - 3).map(move |x| (x, y)))
+            .find(|&(x, y)| {
+                let text: String = (0..4).map(|i| buffer[(x + i, y)].symbol()).collect();
+                text == "14.5" && buffer[(x, y)].bg == Color::Blue
+            })
+            .expect("score on the highlighted list row");
+        assert_eq!(buffer[selected_score].fg, Color::Red);
+    }
 
     fn render_text(app: &mut App<'_>, width: u16, height: u16) -> String {
         let backend = TestBackend::new(width, height);

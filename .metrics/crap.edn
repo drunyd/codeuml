@@ -15,9 +15,10 @@
   {:name "fmt", :namespace "codeuml_core::relationship::RelationshipKind", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "extract_type_references", :namespace "codeuml_lang_rust::analyzer", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "analyze_items", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 10, :coverage 100.0, :crap 10.0}
+  {:name "tokenize", :namespace "codeuml_metrics::report", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "handle", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "handle_diagram", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 100.0, :crap 10.0}
-  {:name "render_architecture", :namespace "codeuml_tui::render", :complexity 9, :coverage 79.2453, :crap 9.7242}
+  {:name "render_architecture", :namespace "codeuml_tui::render", :complexity 9, :coverage 80.0, :crap 9.648}
   {:name "resolve_references", :namespace "codeuml_analysis::resolution", :complexity 9, :coverage 88.4058, :crap 9.1262}
   {:name "action_for_mode", :namespace "codeuml_tui::input", :complexity 9, :coverage 90.9091, :crap 9.0609}
   {:name "edge_cell_style", :namespace "codeuml_tui::render", :complexity 9, :coverage 90.9091, :crap 9.0609}
@@ -58,6 +59,7 @@
   {:name "project", :namespace "codeuml_diagram::projection", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "extract_angle_arguments", :namespace "codeuml_lang_rust::analyzer", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "resolve_named_type", :namespace "codeuml_lang_rust::analyzer", :complexity 7, :coverage 100.0, :crap 7.0}
+  {:name "parse_report", :namespace "codeuml_metrics::report", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "route_horizontal", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 43.75, :crap 6.8477}
   {:name "source_entry_info", :namespace "codeuml_analysis::discovery", :complexity 6, :coverage 72.0, :crap 6.7903}
   {:name "use_vertical_route", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 60.0, :crap 6.6}
@@ -85,6 +87,7 @@
   {:name "fmt", :namespace "codeuml_core::declaration::Visibility", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "path_root", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "rust_type_path", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 100.0, :crap 6.0}
+  {:name "parse_config", :namespace "codeuml_metrics::config", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "run_browser", :namespace "codeuml_tui::terminal", :complexity 2, :coverage 0.0, :crap 6.0}
   {:name "run_browser_app", :namespace "codeuml_tui::terminal", :complexity 2, :coverage 0.0, :crap 6.0}
   {:name "run_event_loop", :namespace "codeuml_tui::terminal", :complexity 6, :coverage 100.0, :crap 6.0}
@@ -112,6 +115,7 @@
   {:name "discover_target", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 93.1034, :crap 5.0082}
   {:name "add_target_source", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 94.1176, :crap 5.0051}
   {:name "resolve_type", :namespace "codeuml_cli", :complexity 5, :coverage 96.5517, :crap 5.001}
+  {:name "render_type_list", :namespace "codeuml_tui::render", :complexity 5, :coverage 97.9167, :crap 5.0002}
   {:name "process_source_entry", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "is_external_reference", :namespace "codeuml_analysis::resolution", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "new", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 5, :coverage 100.0, :crap 5.0}
@@ -121,11 +125,17 @@
   {:name "edge_endpoint", :namespace "codeuml_diagram::svg", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "field_references", :namespace "codeuml_lang_rust::analyzer", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "method_spec", :namespace "codeuml_lang_rust::analyzer", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "read_report", :namespace "codeuml_metrics", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "read_number", :namespace "codeuml_metrics::config", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "read_string", :namespace "codeuml_metrics::report", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "unescape", :namespace "codeuml_metrics::report", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "set", :namespace "codeuml_metrics::report::Fields", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "rebuild_visible", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "background_mode", :namespace "codeuml_tui::render", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "diagram_cell_style", :namespace "codeuml_tui::render", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "render_architecture_list", :namespace "codeuml_tui::render", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "render_main_view", :namespace "codeuml_tui::render", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "truncate", :namespace "codeuml_tui::score", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "direction_mask", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "segment_directions", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "add_axis_segment", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 5, :coverage 100.0, :crap 5.0}
@@ -153,9 +163,8 @@
   {:name "boundary_label", :namespace "codeuml_tui::terminal_diagram", :complexity 4, :coverage 92.8571, :crap 4.0058}
   {:name "collect_target_support", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 94.1176, :crap 4.0033}
   {:name "place_label", :namespace "codeuml_tui::terminal_diagram", :complexity 4, :coverage 94.1176, :crap 4.0033}
-  {:name "header_lines", :namespace "codeuml_tui::format", :complexity 4, :coverage 94.4444, :crap 4.0027}
+  {:name "header_rows", :namespace "codeuml_tui::format", :complexity 4, :coverage 96.4286, :crap 4.0007}
   {:name "lower_trait", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 4, :coverage 96.7742, :crap 4.0005}
-  {:name "render_type_list", :namespace "codeuml_tui::render", :complexity 4, :coverage 97.4359, :crap 4.0003}
   {:name "discover_packages", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "parse_workspace_members", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "add_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 4, :coverage 100.0, :crap 4.0}
@@ -175,11 +184,15 @@
   {:name "extract_path_type", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "generic_names", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "lower_fields", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "read_thresholds", :namespace "codeuml_metrics::config", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "into_entry", :namespace "codeuml_metrics::report::Fields", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "current_scope_label", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "relationship_rows", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "source_target", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "append_variants", :namespace "codeuml_tui::format", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "control_action", :namespace "codeuml_tui::input", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "architecture_label_style", :namespace "codeuml_tui::render", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "crap_color", :namespace "codeuml_tui::render", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "render", :namespace "codeuml_tui::render", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "handle_event", :namespace "codeuml_tui::terminal", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "collect_boundaries", :namespace "codeuml_tui::terminal_diagram", :complexity 4, :coverage 100.0, :crap 4.0}
@@ -236,6 +249,9 @@
   {:name "is_safe_relative_path", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "normalize_tokens", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "parsed_file", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "normalize", :namespace "codeuml_metrics", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "read_text", :namespace "codeuml_metrics", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "level", :namespace "codeuml_metrics::config::CrapThresholds", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "build_scope_choices", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "clamp_diagram_pan", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "new", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 100.0, :crap 3.0}
@@ -250,6 +266,7 @@
   {:name "endpoint_label", :namespace "codeuml_tui::format", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "action_for_key", :namespace "codeuml_tui::input", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "find_binding", :namespace "codeuml_tui::input", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "detail_lines", :namespace "codeuml_tui::render", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "diagram_lines", :namespace "codeuml_tui::render", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "draw_boundaries", :namespace "codeuml_tui::terminal_diagram", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "draw_edge_labels", :namespace "codeuml_tui::terminal_diagram", :complexity 3, :coverage 100.0, :crap 3.0}
@@ -288,6 +305,7 @@
   {:name "gather_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "build_module_scope", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "build_neighborhood_scope", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "load_metrics", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "resolve_scope", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "add_file", :namespace "codeuml_core::codebase::Codebase", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "add_type", :namespace "codeuml_core::codebase::Codebase", :complexity 2, :coverage 100.0, :crap 2.0}
@@ -330,9 +348,18 @@
   {:name "qualify", :namespace "codeuml_lang_rust::analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "apply_impls", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "lower_enum", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "read_config", :namespace "codeuml_metrics", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "new", :namespace "codeuml_metrics::Metrics", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "assign_value", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "is_separator", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "is_word_end", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "read_word", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "skip_comment", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "architecture_parent_pane", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "ascend_architecture", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "confirm_browse", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "crap_legend", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "crap_score", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "handle_browse_navigation", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "handle_help", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "navigate", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
@@ -341,10 +368,15 @@
   {:name "select_diagram_type", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "selected_source_target", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "set_scope", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "score_of", :namespace "codeuml_tui::format", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "binding", :namespace "codeuml_tui::input", :complexity 1, :coverage 0.0, :crap 2.0}
   {:name "is_control_c", :namespace "codeuml_tui::input", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "render_browser", :namespace "codeuml_tui::render", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "render_header", :namespace "codeuml_tui::render", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "render_scope_dialog", :namespace "codeuml_tui::render", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "score_line", :namespace "codeuml_tui::render", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "fit_row", :namespace "codeuml_tui::score", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "text", :namespace "codeuml_tui::score::CrapScore", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "restore_if_active", :namespace "codeuml_tui::terminal", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "restore_terminal", :namespace "codeuml_tui::terminal", :complexity 1, :coverage 0.0, :crap 2.0}
   {:name "drop", :namespace "codeuml_tui::terminal::TerminalGuard", :complexity 1, :coverage 0.0, :crap 2.0}
@@ -451,6 +483,16 @@
   {:name "new", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "push_type", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "run", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "keep_worst", :namespace "codeuml_metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "load", :namespace "codeuml_metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "level", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "method_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "module_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "thresholds", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "type_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "read_report_path", :namespace "codeuml_metrics::config", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "default", :namespace "codeuml_metrics::config::CrapThresholds", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "default", :namespace "codeuml_metrics::config::MetricsConfig", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "analysis_label", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "architecture_path_label", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "architecture_rows", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
@@ -461,6 +503,7 @@
   {:name "close_source", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "current_scope", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "detail_lines", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detail_rows", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "detail_scroll", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "diagnostic_selected", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "diagnostics", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
@@ -495,16 +538,21 @@
   {:name "source_view", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "start_search", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "status", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "type_crap", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "visible_nodes", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "visible_type_count", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "with_metrics", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "with_project_root", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "detail_lines", :namespace "codeuml_tui::format", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detail_rows", :namespace "codeuml_tui::format", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "diagnostic_line", :namespace "codeuml_tui::format", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "plain", :namespace "codeuml_tui::format::DetailRow", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "scored", :namespace "codeuml_tui::format::DetailRow", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "find_control_binding", :namespace "codeuml_tui::input", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "centered_rect", :namespace "codeuml_tui::render", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "list_content_width", :namespace "codeuml_tui::render", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "render_details", :namespace "codeuml_tui::render", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "render_header", :namespace "codeuml_tui::render", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "render_help", :namespace "codeuml_tui::render", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "new", :namespace "codeuml_tui::score::CrapScore", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "layout_terminal_diagram", :namespace "codeuml_tui::terminal_diagram", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "line_glyph", :namespace "codeuml_tui::terminal_diagram", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "render_diagram_canvas", :namespace "codeuml_tui::terminal_diagram", :complexity 1, :coverage 100.0, :crap 1.0}
@@ -519,6 +567,7 @@
   {:name "default", :namespace "codeuml_tui::terminal_diagram::TerminalDiagramLayout", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "node_rect", :namespace "codeuml_tui::terminal_diagram::TerminalDiagramLayout", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "fixture_codebase", :namespace "codeuml_tui::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "fixture_metrics", :namespace "codeuml_tui::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "location", :namespace "codeuml_tui::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "type_named", :namespace "codeuml_tui::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "drop", :namespace "codeuml_tui::test_support::TempDir", :complexity 1, :coverage 100.0, :crap 1.0}

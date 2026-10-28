@@ -1,5 +1,6 @@
 use codeuml_core::Codebase;
 use codeuml_diagram::ProjectionError;
+use codeuml_metrics::Metrics;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     crossterm::{
@@ -24,9 +25,16 @@ pub enum TuiError {
 }
 
 /// Run the interactive browser until the user quits. `project_root` is used to
-/// show source excerpts for declarations and relationship evidence.
-pub fn run_browser(codebase: &Codebase, project_root: &Path) -> Result<(), TuiError> {
-    let app = App::new(codebase)?.with_project_root(project_root.to_path_buf());
+/// show source excerpts for declarations and relationship evidence; `metrics`,
+/// when present, adds colour-coded CRAP scores next to modules, types and methods.
+pub fn run_browser(
+    codebase: &Codebase,
+    project_root: &Path,
+    metrics: Option<Metrics>,
+) -> Result<(), TuiError> {
+    let app = App::new(codebase)?
+        .with_project_root(project_root.to_path_buf())
+        .with_metrics(metrics);
     run_browser_app(app)
 }
 

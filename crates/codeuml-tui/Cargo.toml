@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 codeuml-core = { path = "../codeuml-core" }
 codeuml-diagram = { path = "../codeuml-diagram" }
+codeuml-metrics = { version = "0.1.0", path = "../codeuml-metrics" }
 ratatui = "0.29"
 thiserror.workspace = true
 unicode-width = "0.2"

@@ -122,6 +122,17 @@ fn render_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
 }
 
 fn render_architecture_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
+    if app.architecture_source_panel_enabled() {
+        let chunks = Layout::horizontal([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(area);
+        render_architecture_canvas(frame, app, chunks[0]);
+        render_architecture_source_panel(frame, app, chunks[1]);
+    } else {
+        render_architecture_canvas(frame, app, area);
+    }
+}
+
+fn render_architecture_canvas(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
     let mode = if app.architecture_diagram_full() {
         "full hierarchy"
     } else {
@@ -150,6 +161,34 @@ fn render_architecture_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: R
     let (pan_x, pan_y) = app.architecture_diagram_pan();
     let lines = diagram_lines(canvas, inner, pan_x, pan_y);
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_architecture_source_panel(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
+    let title = app
+        .architecture_source_view()
+        .map(|view| format!("Source - {}", view.title))
+        .unwrap_or_else(|| "Source".to_owned());
+    let block = Block::default().borders(Borders::ALL).title(title);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if let Some(view) = app.architecture_source_view() {
+        frame.render_widget(
+            Paragraph::new(source_lines(
+                view,
+                app.architecture_source_scroll(),
+                inner.height,
+            )),
+            inner,
+        );
+    } else if let Some(error) = app.architecture_source_error() {
+        frame.render_widget(
+            Paragraph::new(error.to_owned())
+                .style(Style::default().fg(Color::Red))
+                .wrap(Wrap { trim: false }),
+            inner,
+        );
+    }
 }
 
 fn diagram_lines(
@@ -237,34 +276,39 @@ fn render_source(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
         .title(format!("Source - {} ({})", view.title, view.file));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    frame.render_widget(
+        Paragraph::new(source_lines(view, app.source_scroll(), inner.height)),
+        inner,
+    );
+}
 
+fn source_lines(
+    view: &crate::source::SourceView,
+    scroll: usize,
+    height: u16,
+) -> Vec<Line<'static>> {
     let number_width = view.lines.len().max(1).to_string().len();
-    let lines: Vec<Line<'static>> = view
-        .lines
+    view.lines
         .iter()
         .enumerate()
-        .skip(app.source_scroll())
-        .take(usize::from(inner.height))
+        .skip(scroll)
+        .take(usize::from(height))
         .map(|(index, text)| {
             let highlighted = (view.highlight.0..=view.highlight.1).contains(&index);
-            let style = if highlighted {
+            let number_style = if highlighted {
                 Style::default()
                     .bg(Color::Blue)
                     .fg(Color::White)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                Style::default().fg(Color::DarkGray)
             };
             Line::from(vec![
-                Span::styled(
-                    format!("{:>number_width$} ", index + 1),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(text.clone(), style),
+                Span::styled(format!("{:>number_width$} ", index + 1), number_style),
+                Span::raw(text.clone()),
             ])
         })
-        .collect();
-    frame.render_widget(Paragraph::new(lines), inner);
+        .collect()
 }
 
 fn render_architecture(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
@@ -715,7 +759,7 @@ fn render_footer(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
             "j/k move  l/Enter open  h up a level  v diagram  t type view  o source  Esc/b up or exit  d diagnostics  ? help  q quit"
         }
         Mode::ArchitectureDiagram => {
-            "j/k select  l/Enter zoom/open  h up  f full/level  t type view  Ctrl+hjkl pan  c center  o source  Esc/b/v list  d diag  ? help  q quit"
+            "j/k select  l/Enter zoom  h up  f full/level  t type view  s source panel  Ctrl+hjkl pan  Ctrl+u/d source scroll  c center  o full source  Esc/b/v list  d diag  ? help  q quit"
         }
         Mode::Search => "Type to filter  Backspace  Enter accept  Esc cancel  Ctrl+C quit",
         Mode::Diagnostics => "Up/Down scroll  PgUp/PgDn  Home/End  Esc back  Ctrl+C quit",
@@ -769,7 +813,10 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from("Diagram: Enter opens details; Esc/b/v returns to the browser."),
         Line::from("Architecture: j/k move, l/Enter open module/type, h up a level, Esc/b exit."),
         Line::from("Architecture diagram: v from Architecture; f full/level; Ctrl+hjkl pan."),
-        Line::from("Architecture diagram: l/Enter zoom/open; h up; Esc/b/v back to list."),
+        Line::from("Architecture diagram: s toggles the source panel; Ctrl+U/D scrolls it."),
+        Line::from("Architecture diagram: l/Enter zooms modules; leaf types stay in place."),
+        Line::from("Architecture diagram: o opens the selected source full-screen."),
+        Line::from("Architecture diagram: h up; t type browser; Esc/b/v back to list."),
         Line::from("Resolved relationships navigate to their target type."),
         Line::from(
             "Boundary targets may open in project scope; unresolved targets do not navigate.",
@@ -1099,6 +1146,23 @@ mod tests {
     }
 
     #[test]
+    fn source_highlight_applies_only_to_the_line_number() {
+        let view = crate::source::SourceView {
+            title: "test".to_owned(),
+            file: "src/lib.rs".to_owned(),
+            lines: vec!["first".to_owned(), "second".to_owned(), "third".to_owned()],
+            highlight: (1, 1),
+        };
+        let lines = source_lines(&view, 0, 10);
+
+        assert_eq!(lines[1].spans[0].style.bg, Some(Color::Blue));
+        assert_eq!(lines[1].spans[1].style.bg, None);
+        assert_eq!(lines[0].spans[0].style.bg, None);
+        assert_eq!(lines[2].spans[0].style.bg, None);
+        assert_eq!(lines[1].spans[1].content.as_ref(), "second");
+    }
+
+    #[test]
     fn source_view_renders_numbered_lines_with_title_and_controls() {
         let project = crate::test_support::fixture_project("render-source");
         let codebase = fixture_codebase();
@@ -1150,6 +1214,30 @@ mod tests {
 
         let text = render_text(&mut app, 20, 6);
         assert_eq!(text.lines().count(), 6);
+    }
+
+    #[test]
+    fn architecture_diagram_source_panel_shows_selected_source() {
+        let project = crate::test_support::fixture_project("render-architecture-source");
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("app")
+            .with_project_root(project.0.clone());
+        app.start_default_view();
+        app.handle(Action::ToggleArchitectureSourcePanel);
+        let text = render_text(&mut app, 140, 40);
+        assert!(text.contains("Architecture diagram"), "{text}");
+        assert!(text.contains("Source - Module api"), "{text}");
+        assert!(text.contains("// api line 1"), "{text}");
+        assert!(text.contains("s source panel"), "{text}");
+
+        app.handle(Action::NavigateDown);
+        let text = render_text(&mut app, 140, 40);
+        assert!(text.contains("Source - Module models"), "{text}");
+        assert!(text.contains("// models line 1"), "{text}");
+
+        let text = render_text(&mut app, 30, 10);
+        assert_eq!(text.lines().count(), 10);
     }
 
     #[test]

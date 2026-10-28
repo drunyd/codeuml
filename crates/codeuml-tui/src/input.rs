@@ -90,6 +90,11 @@ const ARCHITECTURE_DIAGRAM: &[Binding] = &[
     binding(KeyCode::Char('t'), Action::OpenTypeBrowser, false),
     binding(KeyCode::Char('c'), Action::CenterDiagram, false),
     binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(
+        KeyCode::Char('s'),
+        Action::ToggleArchitectureSourcePanel,
+        false,
+    ),
     binding(KeyCode::Esc, Action::Cancel, true),
     binding(KeyCode::Char('b'), Action::Cancel, true),
     binding(KeyCode::Char('v'), Action::Cancel, true),
@@ -102,6 +107,8 @@ const ARCHITECTURE_DIAGRAM_CONTROL: &[(KeyCode, Action)] = &[
     (KeyCode::Char('j'), Action::PanDown),
     (KeyCode::Char('k'), Action::PanUp),
     (KeyCode::Char('l'), Action::PanRight),
+    (KeyCode::Char('u'), Action::ScrollDetailsUp),
+    (KeyCode::Char('d'), Action::ScrollDetailsDown),
 ];
 const DIAGRAM: &[Binding] = &[
     binding(KeyCode::Up, Action::PanUp, false),
@@ -468,6 +475,14 @@ mod tests {
         assert_eq!(
             action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('v'))),
             Some(Action::Cancel)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, key(KeyCode::Char('s'))),
+            Some(Action::ToggleArchitectureSourcePanel)
+        );
+        assert_eq!(
+            action_for_key(Mode::ArchitectureDiagram, control('u')),
+            Some(Action::ScrollDetailsUp)
         );
         assert_eq!(
             action_for_key(Mode::ArchitectureDiagram, control('l')),

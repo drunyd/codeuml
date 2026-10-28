@@ -69,6 +69,7 @@ pub(crate) enum Action {
     OpenArchitecture,
     OpenArchitectureDiagram,
     ToggleArchitectureFull,
+    ToggleArchitectureSourcePanel,
     OpenTypeBrowser,
     OpenSource,
     Back,
@@ -193,6 +194,10 @@ pub(crate) struct App<'a> {
     architecture_diagram_pan_y: u16,
     architecture_diagram_viewport_width: u16,
     architecture_diagram_viewport_height: u16,
+    architecture_source_panel: bool,
+    architecture_source: Option<SourceView>,
+    architecture_source_error: Option<String>,
+    architecture_source_scroll: usize,
     project_root: Option<PathBuf>,
     metrics: Option<Metrics>,
     source: Option<SourceView>,
@@ -242,6 +247,10 @@ impl<'a> App<'a> {
             architecture_diagram_pan_y: 0,
             architecture_diagram_viewport_width: 0,
             architecture_diagram_viewport_height: 0,
+            architecture_source_panel: false,
+            architecture_source: None,
+            architecture_source_error: None,
+            architecture_source_scroll: 0,
             project_root: None,
             metrics: None,
             source: None,
@@ -650,6 +659,9 @@ impl<'a> App<'a> {
             Action::Confirm | Action::Descend => self.open_architecture_diagram_selection(),
             Action::Ascend => self.ascend_architecture_diagram(),
             Action::ToggleArchitectureFull => self.toggle_architecture_full(),
+            Action::ToggleArchitectureSourcePanel => self.toggle_architecture_source_panel(),
+            Action::ScrollDetailsUp => self.scroll_architecture_source(-1),
+            Action::ScrollDetailsDown => self.scroll_architecture_source(1),
             Action::CenterDiagram => {
                 self.center_architecture_diagram_on_selected();
                 self.status = "Architecture view centered on focused item.".to_owned();
@@ -733,6 +745,7 @@ impl<'a> App<'a> {
             self.architecture_visual_selected.as_ref(),
         );
         self.clamp_architecture_diagram_pan();
+        self.refresh_architecture_source_panel();
     }
 
     fn select_architecture_diagram_node(&mut self, delta: isize) {
@@ -762,6 +775,7 @@ impl<'a> App<'a> {
                 self.architecture_visual_selected.as_ref(),
             );
             self.center_architecture_diagram_on_selected();
+            self.refresh_architecture_source_panel();
             self.status = self.architecture_selected_status();
         }
     }
@@ -935,6 +949,77 @@ impl<'a> App<'a> {
             && rect.right() > self.architecture_diagram_pan_x
             && rect.y < bottom
             && rect.bottom() > self.architecture_diagram_pan_y
+    }
+
+    fn toggle_architecture_source_panel(&mut self) {
+        self.architecture_source_panel = !self.architecture_source_panel;
+        if self.architecture_source_panel {
+            self.refresh_architecture_source_panel();
+            self.status = if self.architecture_source_error.is_some() {
+                "Architecture source panel opened with an error.".to_owned()
+            } else {
+                "Architecture source panel opened.".to_owned()
+            };
+        } else {
+            self.status = "Architecture source panel closed.".to_owned();
+        }
+    }
+
+    fn refresh_architecture_source_panel(&mut self) {
+        if !self.architecture_source_panel {
+            return;
+        }
+        let Some(root) = self.project_root.clone() else {
+            self.architecture_source = None;
+            self.architecture_source_error =
+                Some("Source viewing is unavailable: project root unknown.".to_owned());
+            return;
+        };
+        let Some((location, title)) = self.architecture_diagram_source_target() else {
+            self.architecture_source = None;
+            self.architecture_source_error =
+                Some("Nothing with a source location is selected.".to_owned());
+            return;
+        };
+        match source::load_source(&root, &location, title) {
+            Ok(view) => {
+                self.architecture_source_scroll = view.highlight.0.saturating_sub(3);
+                self.architecture_source = Some(view);
+                self.architecture_source_error = None;
+            }
+            Err(message) => {
+                self.architecture_source = None;
+                self.architecture_source_error = Some(message);
+            }
+        }
+    }
+
+    fn scroll_architecture_source(&mut self, delta: isize) {
+        if !self.architecture_source_panel {
+            return;
+        }
+        let last = self
+            .architecture_source
+            .as_ref()
+            .map_or(0, |view| view.lines.len().saturating_sub(1));
+        let next = (self.architecture_source_scroll as isize + delta).clamp(0, last as isize);
+        self.architecture_source_scroll = next as usize;
+    }
+
+    pub(crate) fn architecture_source_panel_enabled(&self) -> bool {
+        self.architecture_source_panel
+    }
+
+    pub(crate) fn architecture_source_view(&self) -> Option<&SourceView> {
+        self.architecture_source.as_ref()
+    }
+
+    pub(crate) fn architecture_source_error(&self) -> Option<&str> {
+        self.architecture_source_error.as_deref()
+    }
+
+    pub(crate) fn architecture_source_scroll(&self) -> usize {
+        self.architecture_source_scroll
     }
 
     pub(crate) fn architecture_diagram_layout(&self) -> &TerminalDiagramLayout {
@@ -2803,6 +2888,65 @@ mod tests {
                 .style,
             TerminalDiagramStyle::ScoreGood
         );
+    }
+
+    #[test]
+    fn architecture_source_panel_tracks_the_focused_element_and_scrolls() {
+        let project = crate::test_support::fixture_project("architecture-source-panel");
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_project_root(project.0.clone());
+        app.start_default_view();
+        app.handle(Action::ToggleArchitectureSourcePanel);
+
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+        assert!(app.architecture_source_panel_enabled());
+        let view = app.architecture_source_view().expect("module source");
+        assert_eq!(view.title, "Module api");
+        assert_eq!(view.file, "src/api.rs");
+        assert_eq!(view.highlight, (0, 0));
+
+        app.handle(Action::NavigateDown);
+        assert_eq!(
+            app.architecture_source_view()
+                .map(|view| view.title.as_str()),
+            Some("Module models")
+        );
+
+        app.handle(Action::Confirm);
+        let view = app.architecture_source_view().expect("type source");
+        assert_eq!(view.title, "models::Alpha");
+        assert_eq!(view.file, "src/models.rs");
+        assert_eq!(view.highlight, (2, 2));
+        let title_before_leaf = view.title.clone();
+        let scroll_before = app.architecture_source_scroll();
+
+        app.handle(Action::ScrollDetailsDown);
+        assert_eq!(app.architecture_source_scroll(), scroll_before + 1);
+        app.handle(Action::Confirm);
+        assert_eq!(
+            app.architecture_source_view()
+                .map(|view| view.title.as_str()),
+            Some(title_before_leaf.as_str())
+        );
+
+        app.handle(Action::ToggleArchitectureSourcePanel);
+        assert!(!app.architecture_source_panel_enabled());
+        assert_eq!(app.mode(), Mode::ArchitectureDiagram);
+    }
+
+    #[test]
+    fn architecture_source_panel_reports_missing_project_root() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.start_default_view();
+        app.handle(Action::ToggleArchitectureSourcePanel);
+        assert!(app.architecture_source_panel_enabled());
+        assert!(app.architecture_source_view().is_none());
+        assert!(app
+            .architecture_source_error()
+            .is_some_and(|error| error.contains("project root")));
     }
 
     #[test]

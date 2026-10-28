@@ -106,7 +106,7 @@ CodeUML 0.1.0
 Project root: /path/to/project
 Source files: 66
 Types: 168
-Relationships: 679
+Relationships: 681
 Diagram nodes: 168
 Diagram edges: 486
 Diagnostics: 0
@@ -244,8 +244,8 @@ than 90 columns the parent pane is hidden.
 
 ### Source view and back navigation
 
-Press `o` to open a scrollable, line-numbered source view with the declaration
-or evidence span highlighted. In the type list it shows the selected type; with
+Press `o` to open a scrollable, line-numbered source view. The declaration or
+evidence line number is highlighted without recolouring the source text. In the type list it shows the selected type; with
 focus on the relationships panel it shows the selected relationship's first
 evidence location; in the architecture browser and diagram view it shows the
 selected module/type. Scroll with `Up`/`Down`, `PageUp`/`PageDown`, and
@@ -373,7 +373,11 @@ Default **level view**:
 - `t` switches directly to the type browser.
 - `Esc`/`b`/`v` returns to the Architecture browser.
 - `Ctrl+h/j/k/l` and `PageUp`/`PageDown` pan; `c` recenters on the focused item.
-- `o` opens source for the selected module/type; `d` diagnostics; `?` help.
+- `s` toggles a right-side source panel showing the focused module/type’s source,
+  highlighting the same declaration line number that `o` opens full-screen.
+  Source text keeps its normal colours; the panel reloads whenever focus changes.
+- `Ctrl+U`/`Ctrl+D` scroll the source panel.
+- `o` opens the selected source full-screen; `d` diagnostics; `?` help.
 
 The full view shows all modules and types with containment edges. It is useful
 as an overview but can be large; the shared viewport clips and pans it safely.
@@ -388,9 +392,11 @@ Architecture map keys:
 | `h`/`Left` | Step up one level |
 | `f` | Toggle level/full hierarchy |
 | `t` | Switch to the type browser |
+| `s` | Toggle the right-side source panel |
+| `Ctrl+U`/`Ctrl+D` | Scroll the source panel |
 | `Ctrl+h/j/k/l`, `PageUp`/`PageDown` | Pan |
 | `c` | Center focused item |
-| `o` | Open source |
+| `o` | Open source full-screen |
 | `Esc`/`b`/`v` | Return to Architecture list |
 | `d` | Diagnostics |
 | `?` | Help |
@@ -581,6 +587,8 @@ git diff --cached --check
   aggregate type dependencies into module-to-module architecture edges.
 - Architecture boxes omit private methods; full member and visibility details
   remain available in the type browser/details view.
+- The architecture source side panel is read-only and scrolls independently from
+  the architecture viewport.
 - Diagram node detail is intentionally compact; use the existing details panel
   for complete members.
 - SVG layout uses a deterministic layered/grid fallback rather than a

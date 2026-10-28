@@ -1,0 +1,15 @@
+[package]
+name = "codeuml-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeuml-core = { path = "../codeuml-core" }
+codeuml-diagram = { path = "../codeuml-diagram" }
+ratatui = "0.29"
+thiserror.workspace = true
+unicode-width = "0.2"
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "codeuml-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "codeuml_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codeuml"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+codeuml-analysis = { path = "../codeuml-analysis" }
+codeuml-core = { version = "0.1.0", path = "../codeuml-core" }
+codeuml-diagram = { version = "0.1.0", path = "../codeuml-diagram" }
+codeuml-tui = { version = "0.1.0", path = "../codeuml-tui" }
+thiserror.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+roxmltree = "0.21.2"

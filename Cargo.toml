@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/codeuml-analysis",
+    "crates/codeuml-cli",
+    "crates/codeuml-core",
+    "crates/codeuml-diagram",
+    "crates/codeuml-lang-rust",
+    "crates/codeuml-tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[workspace.dependencies]
+clap = { version = "4.5", features = ["derive"] }
+thiserror = "2.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

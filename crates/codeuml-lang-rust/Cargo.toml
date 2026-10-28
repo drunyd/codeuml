@@ -1,0 +1,14 @@
+[package]
+name = "codeuml-lang-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeuml-core = { path = "../codeuml-core" }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+syn = { version = "2", features = ["full"] }
+
+[lints]
+workspace = true

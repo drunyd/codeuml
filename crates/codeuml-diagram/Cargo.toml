@@ -1,0 +1,16 @@
+[package]
+name = "codeuml-diagram"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeuml-core = { path = "../codeuml-core" }
+thiserror.workspace = true
+unicode-width = "0.2"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+roxmltree = "0.21.2"

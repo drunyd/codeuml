@@ -121,8 +121,16 @@ pub fn run(cli: Cli, output: &mut impl Write) -> Result<(), CliError> {
     validate_summary_options(&cli)?;
     let loaded = load_project(&cli)?;
     let diagram = project_diagram(&loaded.codebase, &DiagramScope::Project)?;
-    let metadata = loaded.codebase.analysis();
+    write_summary(&loaded, diagram.nodes.len(), diagram.edges.len(), output)
+}
 
+fn write_summary(
+    loaded: &LoadedProject,
+    node_count: usize,
+    edge_count: usize,
+    output: &mut impl Write,
+) -> Result<(), CliError> {
+    let metadata = loaded.codebase.analysis();
     writeln!(output, "CodeUML {}", env!("CARGO_PKG_VERSION"))?;
     writeln!(output, "Project root: {}", loaded.path.as_path().display())?;
     writeln!(output, "Source files: {}", loaded.codebase.files().len())?;
@@ -132,8 +140,8 @@ pub fn run(cli: Cli, output: &mut impl Write) -> Result<(), CliError> {
         "Relationships: {}",
         loaded.codebase.relationships().len()
     )?;
-    writeln!(output, "Diagram nodes: {}", diagram.nodes.len())?;
-    writeln!(output, "Diagram edges: {}", diagram.edges.len())?;
+    writeln!(output, "Diagram nodes: {node_count}")?;
+    writeln!(output, "Diagram edges: {edge_count}")?;
     writeln!(
         output,
         "Diagnostics: {}",
@@ -147,7 +155,6 @@ pub fn run(cli: Cli, output: &mut impl Write) -> Result<(), CliError> {
         metadata.files_failed,
         if metadata.partial { ", partial" } else { "" }
     )?;
-
     Ok(())
 }
 
@@ -185,8 +192,7 @@ pub fn run_svg(
 /// terminal is entered.
 pub fn run_interactive(cli: Cli) -> Result<(), CliError> {
     let loaded = load_project(&cli)?;
-    codeuml_tui::run_browser(&loaded.codebase)?;
-    Ok(())
+    codeuml_tui::run_browser(&loaded.codebase, loaded.path.as_path()).map_err(CliError::from)
 }
 
 fn validate_summary_options(cli: &Cli) -> Result<(), CliError> {
@@ -227,43 +233,82 @@ fn validate_export_options(cli: &Cli) -> Result<(), CliError> {
 }
 
 fn resolve_scope(codebase: &Codebase, cli: &Cli) -> Result<(DiagramScope, String), CliError> {
-    let scope = match (cli.scope, cli.module.as_deref(), cli.type_name.as_deref()) {
-        (Some(ScopeArg::Project), Some(_), _) | (Some(ScopeArg::Project), _, Some(_)) => {
-            return Err(CliError::Usage(
-                "--module/--type cannot be used with project scope".to_owned(),
-            ));
-        }
-        (Some(ScopeArg::Module), _, Some(_)) => {
-            return Err(CliError::Usage(
-                "--type cannot be used with module scope".to_owned(),
-            ));
-        }
-        (Some(ScopeArg::Module), None, _) => {
-            return Err(CliError::Usage(
-                "--scope module requires --module".to_owned(),
-            ));
-        }
-        (Some(ScopeArg::Neighborhood), Some(_), _) => {
-            return Err(CliError::Usage(
-                "--module cannot be used with neighborhood scope".to_owned(),
-            ));
-        }
-        (Some(ScopeArg::Neighborhood), _, None) => {
-            return Err(CliError::Usage(
-                "--scope neighborhood requires --type".to_owned(),
-            ));
-        }
-        (None, Some(_), Some(_)) => {
-            return Err(CliError::Usage(
-                "use only one of --module or --type, or specify --scope".to_owned(),
-            ));
-        }
-        (Some(scope), _, _) => scope,
-        (None, Some(_), None) => ScopeArg::Module,
-        (None, None, Some(_)) => ScopeArg::Neighborhood,
-        (None, None, None) => ScopeArg::Project,
-    };
+    let scope = resolve_scope_kind(cli)?;
+    build_scope(codebase, cli, scope)
+}
 
+fn resolve_scope_kind(cli: &Cli) -> Result<ScopeArg, CliError> {
+    validate_scope_options(cli)?;
+    match cli.scope {
+        Some(scope) => Ok(scope),
+        None => Ok(infer_scope_kind(cli)),
+    }
+}
+
+fn validate_scope_options(cli: &Cli) -> Result<(), CliError> {
+    validate_project_scope(cli)?;
+    validate_module_scope(cli)?;
+    validate_neighborhood_scope(cli)?;
+    if cli.scope.is_none() && cli.module.is_some() && cli.type_name.is_some() {
+        return Err(CliError::Usage(
+            "use only one of --module or --type, or specify --scope".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_project_scope(cli: &Cli) -> Result<(), CliError> {
+    if cli.scope == Some(ScopeArg::Project) && (cli.module.is_some() || cli.type_name.is_some()) {
+        return Err(CliError::Usage(
+            "--module/--type cannot be used with project scope".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_module_scope(cli: &Cli) -> Result<(), CliError> {
+    if cli.scope == Some(ScopeArg::Module) && cli.type_name.is_some() {
+        return Err(CliError::Usage(
+            "--type cannot be used with module scope".to_owned(),
+        ));
+    }
+    if cli.scope == Some(ScopeArg::Module) && cli.module.is_none() {
+        return Err(CliError::Usage(
+            "--scope module requires --module".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_neighborhood_scope(cli: &Cli) -> Result<(), CliError> {
+    if cli.scope == Some(ScopeArg::Neighborhood) && cli.module.is_some() {
+        return Err(CliError::Usage(
+            "--module cannot be used with neighborhood scope".to_owned(),
+        ));
+    }
+    if cli.scope == Some(ScopeArg::Neighborhood) && cli.type_name.is_none() {
+        return Err(CliError::Usage(
+            "--scope neighborhood requires --type".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn infer_scope_kind(cli: &Cli) -> ScopeArg {
+    if cli.module.is_some() {
+        ScopeArg::Module
+    } else if cli.type_name.is_some() {
+        ScopeArg::Neighborhood
+    } else {
+        ScopeArg::Project
+    }
+}
+
+fn build_scope(
+    codebase: &Codebase,
+    cli: &Cli,
+    scope: ScopeArg,
+) -> Result<(DiagramScope, String), CliError> {
     match scope {
         ScopeArg::Project => Ok((
             DiagramScope::Project,
@@ -273,29 +318,36 @@ fn resolve_scope(codebase: &Codebase, cli: &Cli) -> Result<(DiagramScope, String
                 codebase.relationships().len()
             ),
         )),
-        ScopeArg::Module => {
-            let module = resolve_module(codebase, cli.module.as_deref().expect("validated"))?;
-            Ok((
-                DiagramScope::Module {
-                    module: module.id.clone(),
-                },
-                format!("Scope: Module: {}", module.qualified_name),
-            ))
-        }
-        ScopeArg::Neighborhood => {
-            let declaration = resolve_type(codebase, cli.type_name.as_deref().expect("validated"))?;
-            Ok((
-                DiagramScope::TypeNeighborhood {
-                    type_id: declaration.id.clone(),
-                    direction: codeuml_diagram::NeighborhoodDirection::Both,
-                },
-                format!(
-                    "Scope: Neighborhood: {} (bidirectional one-hop)",
-                    declaration.qualified_name
-                ),
-            ))
-        }
+        ScopeArg::Module => build_module_scope(codebase, cli),
+        ScopeArg::Neighborhood => build_neighborhood_scope(codebase, cli),
     }
+}
+
+fn build_module_scope(codebase: &Codebase, cli: &Cli) -> Result<(DiagramScope, String), CliError> {
+    let module = resolve_module(codebase, cli.module.as_deref().expect("validated"))?;
+    Ok((
+        DiagramScope::Module {
+            module: module.id.clone(),
+        },
+        format!("Scope: Module: {}", module.qualified_name),
+    ))
+}
+
+fn build_neighborhood_scope(
+    codebase: &Codebase,
+    cli: &Cli,
+) -> Result<(DiagramScope, String), CliError> {
+    let declaration = resolve_type(codebase, cli.type_name.as_deref().expect("validated"))?;
+    Ok((
+        DiagramScope::TypeNeighborhood {
+            type_id: declaration.id.clone(),
+            direction: codeuml_diagram::NeighborhoodDirection::Both,
+        },
+        format!(
+            "Scope: Neighborhood: {} (bidirectional one-hop)",
+            declaration.qualified_name
+        ),
+    ))
 }
 
 fn resolve_module<'a>(

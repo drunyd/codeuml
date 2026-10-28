@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use codeuml_analysis::{discover_project, DiscoveryError, ProjectPath};
@@ -19,10 +19,6 @@ impl TempProject {
         ));
         fs::create_dir_all(&path).expect("create temporary project");
         Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
     }
 
     fn write(&self, relative: &str, contents: &str) {
@@ -137,6 +133,7 @@ fn excludes_target_git_and_vendor_directories_inside_a_package() {
     project.write(".git/hidden.rs", "pub struct Hidden;\n");
     project.write("vendor/dep/src/lib.rs", "pub struct Vendored;\n");
     project.write("src/vendor/inner.rs", "pub struct InnerVendor;\n");
+    project.write("src/notes.txt", "not Rust source\n");
 
     let discovered = discover_project(&project.project_path()).expect("discover project");
 
@@ -169,7 +166,9 @@ path = "tools/custom.rs"
     project.write("examples/demo.rs", "fn main() {}\n");
     project.write("benches/perf.rs", "fn main() {}\n");
     project.write("build.rs", "fn main() {}\n");
-    project.write("tools/custom.rs", "fn main() {}\n");
+    project.write("tools/custom.rs", "mod nested;\nfn main() {}\n");
+    project.write("tools/custom/mod.rs", "pub mod nested;\n");
+    project.write("tools/custom/nested.rs", "pub fn helper() {}\n");
     project.write("scripts/unrelated.rs", "fn unrelated() {}\n");
     project.write(
         "tests/fixtures/nested-project/src/lib.rs",
@@ -190,6 +189,8 @@ path = "tools/custom.rs"
             "src/main.rs",
             "tests/common/mod.rs",
             "tests/integration.rs",
+            "tools/custom/mod.rs",
+            "tools/custom/nested.rs",
             "tools/custom.rs",
         ]
     );
@@ -301,10 +302,40 @@ fn symbolic_links_are_not_followed() {
     let outside = TempProject::new("symlink-outside");
     outside.write("outside.rs", "pub struct Outside;\n");
     symlink(
-        outside.path().join("outside.rs"),
-        project.path().join("src/outside.rs"),
+        outside.path.join("outside.rs"),
+        project.path.join("src/outside.rs"),
     )
     .expect("create symlink");
+
+    let discovered = discover_project(&project.project_path()).expect("discover project");
+
+    assert_eq!(
+        relative_paths(discovered.source_files()),
+        vec!["src/lib.rs"]
+    );
+    assert!(discovered
+        .diagnostics()
+        .iter()
+        .any(|diagnostic| diagnostic.message.contains("symbolic link")));
+}
+
+#[cfg(windows)]
+#[test]
+fn symbolic_links_are_not_followed_when_windows_allows_creation() {
+    use std::os::windows::fs::symlink_file;
+
+    let project = TempProject::new("symlink");
+    write_package(&project, "", "symlinked", "pub struct Root;\n");
+    let outside = TempProject::new("symlink-outside");
+    outside.write("outside.rs", "pub struct Outside;\n");
+    if symlink_file(
+        outside.path.join("outside.rs"),
+        project.path.join("src/outside.rs"),
+    )
+    .is_err()
+    {
+        return;
+    }
 
     let discovered = discover_project(&project.project_path()).expect("discover project");
 

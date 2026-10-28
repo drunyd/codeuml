@@ -2,84 +2,191 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{Action, Mode};
 
+type Binding = (KeyCode, Action, bool);
+
+const fn binding(code: KeyCode, action: Action, allow_control: bool) -> Binding {
+    (code, action, allow_control)
+}
+
+const BROWSE: &[Binding] = &[
+    binding(KeyCode::Up, Action::NavigateUp, false),
+    binding(KeyCode::Char('k'), Action::NavigateUp, false),
+    binding(KeyCode::Down, Action::NavigateDown, false),
+    binding(KeyCode::Char('j'), Action::NavigateDown, false),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::Enter, Action::Confirm, true),
+    binding(KeyCode::Tab, Action::ToggleFocus, true),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('/'), Action::StartSearch, false),
+    binding(KeyCode::Char('s'), Action::OpenScope, false),
+    binding(KeyCode::Char('d'), Action::OpenDiagnostics, false),
+    binding(KeyCode::Char('?'), Action::OpenHelp, false),
+    binding(KeyCode::Char('v'), Action::OpenDiagram, false),
+    binding(KeyCode::Char('a'), Action::OpenArchitecture, false),
+    binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(KeyCode::Backspace, Action::Back, true),
+    binding(KeyCode::Char('q'), Action::Quit, false),
+];
+const BROWSE_CONTROL: &[(KeyCode, Action)] = &[
+    (KeyCode::Char('u'), Action::ScrollDetailsUp),
+    (KeyCode::Char('d'), Action::ScrollDetailsDown),
+];
+const SOURCE: &[Binding] = &[
+    binding(KeyCode::Up, Action::NavigateUp, false),
+    binding(KeyCode::Char('k'), Action::NavigateUp, false),
+    binding(KeyCode::Down, Action::NavigateDown, false),
+    binding(KeyCode::Char('j'), Action::NavigateDown, false),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('b'), Action::Cancel, true),
+    binding(KeyCode::Char('o'), Action::Cancel, true),
+    binding(KeyCode::Char('q'), Action::Cancel, true),
+];
+const ARCHITECTURE: &[Binding] = &[
+    binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(KeyCode::Up, Action::NavigateUp, false),
+    binding(KeyCode::Char('k'), Action::NavigateUp, false),
+    binding(KeyCode::Down, Action::NavigateDown, false),
+    binding(KeyCode::Char('j'), Action::NavigateDown, false),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::Enter, Action::Confirm, true),
+    binding(KeyCode::Right, Action::Descend, false),
+    binding(KeyCode::Char('l'), Action::Descend, false),
+    binding(KeyCode::Left, Action::Ascend, false),
+    binding(KeyCode::Char('h'), Action::Ascend, false),
+    binding(KeyCode::Esc, Action::Cancel, false),
+    binding(KeyCode::Char('b'), Action::Cancel, false),
+    binding(KeyCode::Char('s'), Action::OpenScope, false),
+    binding(KeyCode::Char('d'), Action::OpenDiagnostics, false),
+    binding(KeyCode::Char('?'), Action::OpenHelp, false),
+    binding(KeyCode::Char('q'), Action::Quit, false),
+];
+const DIAGRAM: &[Binding] = &[
+    binding(KeyCode::Up, Action::PanUp, false),
+    binding(KeyCode::Char('k'), Action::PanUp, false),
+    binding(KeyCode::Down, Action::PanDown, false),
+    binding(KeyCode::Char('j'), Action::PanDown, false),
+    binding(KeyCode::Left, Action::PanLeft, false),
+    binding(KeyCode::Char('h'), Action::PanLeft, false),
+    binding(KeyCode::Right, Action::PanRight, false),
+    binding(KeyCode::Char('l'), Action::PanRight, false),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Tab, Action::SelectNext, false),
+    binding(KeyCode::Char('n'), Action::SelectNext, false),
+    binding(KeyCode::BackTab, Action::SelectPrevious, false),
+    binding(KeyCode::Char('p'), Action::SelectPrevious, false),
+    binding(KeyCode::Char('c'), Action::CenterDiagram, false),
+    binding(KeyCode::Char('o'), Action::OpenSource, false),
+    binding(KeyCode::Enter, Action::Confirm, true),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('b'), Action::Cancel, true),
+    binding(KeyCode::Char('v'), Action::Cancel, true),
+    binding(KeyCode::Char('s'), Action::OpenScope, false),
+    binding(KeyCode::Char('d'), Action::OpenDiagnostics, false),
+    binding(KeyCode::Char('?'), Action::OpenHelp, false),
+    binding(KeyCode::Char('q'), Action::Quit, false),
+];
+const DIAGNOSTICS: &[Binding] = &[
+    binding(KeyCode::Up, Action::NavigateUp, true),
+    binding(KeyCode::Char('k'), Action::NavigateUp, true),
+    binding(KeyCode::Down, Action::NavigateDown, true),
+    binding(KeyCode::Char('j'), Action::NavigateDown, true),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('q'), Action::Cancel, true),
+];
+const SCOPE_DIALOG: &[Binding] = &[
+    binding(KeyCode::Up, Action::NavigateUp, true),
+    binding(KeyCode::Char('k'), Action::NavigateUp, true),
+    binding(KeyCode::Down, Action::NavigateDown, true),
+    binding(KeyCode::Char('j'), Action::NavigateDown, true),
+    binding(KeyCode::PageUp, Action::PageUp, true),
+    binding(KeyCode::PageDown, Action::PageDown, true),
+    binding(KeyCode::Home, Action::Home, true),
+    binding(KeyCode::End, Action::End, true),
+    binding(KeyCode::Enter, Action::Confirm, true),
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('q'), Action::Cancel, true),
+];
+const HELP: &[Binding] = &[
+    binding(KeyCode::Esc, Action::Cancel, true),
+    binding(KeyCode::Char('q'), Action::Cancel, true),
+    binding(KeyCode::Char('?'), Action::Cancel, true),
+];
+
+fn find_binding(code: KeyCode, control: bool, bindings: &[Binding]) -> Option<Action> {
+    bindings
+        .iter()
+        .find(|(candidate, _, allow_control)| *candidate == code && (*allow_control || !control))
+        .map(|(_, action, _)| action.clone())
+}
+
+fn action_for_search(key: KeyEvent, control: bool) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::SearchCancel),
+        KeyCode::Enter => Some(Action::SearchSubmit),
+        KeyCode::Backspace => Some(Action::SearchBackspace),
+        KeyCode::Char(character) if !control => Some(Action::SearchInput(character)),
+        _ => None,
+    }
+}
+
 pub(crate) fn action_for_key(mode: Mode, key: KeyEvent) -> Option<Action> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
-    if control && matches!(key.code, KeyCode::Char('c')) {
+    if let Some(action) = control_action(mode, key.code, control) {
+        return Some(action);
+    }
+    if mode == Mode::Search {
+        return action_for_search(key, control);
+    }
+    action_for_mode(mode, key.code, control)
+}
+
+fn action_for_mode(mode: Mode, code: KeyCode, control: bool) -> Option<Action> {
+    match mode {
+        Mode::Search => None,
+        Mode::Browse => find_binding(code, control, BROWSE),
+        Mode::Source => find_binding(code, control, SOURCE),
+        Mode::Architecture => find_binding(code, control, ARCHITECTURE),
+        Mode::Diagram => find_binding(code, control, DIAGRAM),
+        Mode::Diagnostics => find_binding(code, control, DIAGNOSTICS),
+        Mode::ScopeDialog => find_binding(code, control, SCOPE_DIALOG),
+        Mode::Help => find_binding(code, control, HELP),
+    }
+}
+
+fn control_action(mode: Mode, code: KeyCode, control: bool) -> Option<Action> {
+    if is_control_c(code, control) {
         return Some(Action::Quit);
     }
-
-    match mode {
-        Mode::Search => match key.code {
-            KeyCode::Esc => Some(Action::SearchCancel),
-            KeyCode::Enter => Some(Action::SearchSubmit),
-            KeyCode::Backspace => Some(Action::SearchBackspace),
-            KeyCode::Char(character) if !control => Some(Action::SearchInput(character)),
-            _ => None,
-        },
-        Mode::Browse => match key.code {
-            KeyCode::Char('u') if control => Some(Action::ScrollDetailsUp),
-            KeyCode::Char('d') if control => Some(Action::ScrollDetailsDown),
-            KeyCode::Up | KeyCode::Char('k') if !control => Some(Action::NavigateUp),
-            KeyCode::Down | KeyCode::Char('j') if !control => Some(Action::NavigateDown),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            KeyCode::Home => Some(Action::Home),
-            KeyCode::End => Some(Action::End),
-            KeyCode::Enter => Some(Action::Confirm),
-            KeyCode::Tab => Some(Action::ToggleFocus),
-            KeyCode::Esc => Some(Action::Cancel),
-            KeyCode::Char('/') if !control => Some(Action::StartSearch),
-            KeyCode::Char('s') if !control => Some(Action::OpenScope),
-            KeyCode::Char('d') if !control => Some(Action::OpenDiagnostics),
-            KeyCode::Char('?') if !control => Some(Action::OpenHelp),
-            KeyCode::Char('v') if !control => Some(Action::OpenDiagram),
-            KeyCode::Char('q') if !control => Some(Action::Quit),
-            _ => None,
-        },
-        Mode::Diagram => match key.code {
-            KeyCode::Up | KeyCode::Char('k') if !control => Some(Action::PanUp),
-            KeyCode::Down | KeyCode::Char('j') if !control => Some(Action::PanDown),
-            KeyCode::Left | KeyCode::Char('h') if !control => Some(Action::PanLeft),
-            KeyCode::Right | KeyCode::Char('l') if !control => Some(Action::PanRight),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            KeyCode::Tab | KeyCode::Char('n') if !control => Some(Action::SelectNext),
-            KeyCode::BackTab | KeyCode::Char('p') if !control => Some(Action::SelectPrevious),
-            KeyCode::Char('c') if !control => Some(Action::CenterDiagram),
-            KeyCode::Enter => Some(Action::Confirm),
-            KeyCode::Esc | KeyCode::Char('b') | KeyCode::Char('v') => Some(Action::Cancel),
-            KeyCode::Char('s') if !control => Some(Action::OpenScope),
-            KeyCode::Char('d') if !control => Some(Action::OpenDiagnostics),
-            KeyCode::Char('?') if !control => Some(Action::OpenHelp),
-            KeyCode::Char('q') if !control => Some(Action::Quit),
-            _ => None,
-        },
-        Mode::Diagnostics => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigateUp),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigateDown),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            KeyCode::Home => Some(Action::Home),
-            KeyCode::End => Some(Action::End),
-            KeyCode::Esc | KeyCode::Char('q') => Some(Action::Cancel),
-            _ => None,
-        },
-        Mode::ScopeDialog => match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(Action::NavigateUp),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::NavigateDown),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            KeyCode::Home => Some(Action::Home),
-            KeyCode::End => Some(Action::End),
-            KeyCode::Enter => Some(Action::Confirm),
-            KeyCode::Esc | KeyCode::Char('q') => Some(Action::Cancel),
-            _ => None,
-        },
-        Mode::Help => match key.code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') => Some(Action::Cancel),
-            _ => None,
-        },
+    if mode == Mode::Browse && control {
+        return find_control_binding(code, BROWSE_CONTROL);
     }
+    None
+}
+
+fn is_control_c(code: KeyCode, control: bool) -> bool {
+    control && code == KeyCode::Char('c')
+}
+
+fn find_control_binding(code: KeyCode, bindings: &[(KeyCode, Action)]) -> Option<Action> {
+    bindings
+        .iter()
+        .find(|(candidate, _)| *candidate == code)
+        .map(|(_, action)| action.clone())
 }
 
 #[cfg(test)]
@@ -137,6 +244,10 @@ mod tests {
             Some(Action::Quit)
         );
         assert_eq!(
+            action_for_key(Mode::Browse, key(KeyCode::Char('a'))),
+            Some(Action::OpenArchitecture)
+        );
+        assert_eq!(
             action_for_key(Mode::Browse, control('u')),
             Some(Action::ScrollDetailsUp)
         );
@@ -150,6 +261,8 @@ mod tests {
     fn ctrl_c_always_quits_but_q_is_text_during_search() {
         for mode in [
             Mode::Browse,
+            Mode::Architecture,
+            Mode::Source,
             Mode::Diagram,
             Mode::Search,
             Mode::Diagnostics,
@@ -246,6 +359,67 @@ mod tests {
             action_for_key(Mode::Diagram, key(KeyCode::Char('q'))),
             Some(Action::Quit)
         );
+    }
+
+    #[test]
+    fn architecture_keys_navigate_drill_and_return() {
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Down)),
+            Some(Action::NavigateDown)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Enter)),
+            Some(Action::Confirm)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Char('l'))),
+            Some(Action::Descend)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Right)),
+            Some(Action::Descend)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Char('h'))),
+            Some(Action::Ascend)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Left)),
+            Some(Action::Ascend)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Esc)),
+            Some(Action::Cancel)
+        );
+        assert_eq!(
+            action_for_key(Mode::Architecture, key(KeyCode::Char('b'))),
+            Some(Action::Cancel)
+        );
+    }
+
+    #[test]
+    fn source_and_back_keys_are_available_in_the_right_modes() {
+        for mode in [Mode::Browse, Mode::Architecture, Mode::Diagram] {
+            assert_eq!(
+                action_for_key(mode, key(KeyCode::Char('o'))),
+                Some(Action::OpenSource),
+                "mode {mode:?}"
+            );
+        }
+        assert_eq!(
+            action_for_key(Mode::Browse, key(KeyCode::Backspace)),
+            Some(Action::Back)
+        );
+        assert_eq!(
+            action_for_key(Mode::Source, key(KeyCode::Char('j'))),
+            Some(Action::NavigateDown)
+        );
+        for code in [KeyCode::Esc, KeyCode::Char('o'), KeyCode::Char('q')] {
+            assert_eq!(
+                action_for_key(Mode::Source, key(code)),
+                Some(Action::Cancel)
+            );
+        }
     }
 
     #[test]

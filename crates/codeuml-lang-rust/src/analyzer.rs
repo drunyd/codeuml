@@ -1139,87 +1139,114 @@ fn extract_type_references(
     out: &mut Vec<PendingReference>,
 ) {
     match ty {
-        syn::Type::Path(type_path) => {
-            if let Some(qself) = &type_path.qself {
-                extract_type_references(&qself.ty, kind, file, note.clone(), out);
-                let trait_path = path_subset(
-                    &type_path.path,
-                    qself.position,
-                    type_path.path.leading_colon.is_some(),
-                );
-                if !trait_path.segments.is_empty() {
-                    out.push(PendingReference {
-                        kind: RelationshipKind::TraitBound,
-                        path: trait_path,
-                        location: source_location(file, type_path.span()),
-                        note: Some("qualified associated-type bound".to_owned()),
-                    });
-                }
-                out.push(PendingReference {
-                    kind,
-                    path: RustTypePath {
-                        root: RustPathRoot::Unresolved,
-                        segments: Vec::new(),
-                        display: tokens_string(ty),
-                    },
-                    location: source_location(file, type_path.span()),
-                    note: note.clone(),
-                });
-            } else {
-                let path = type_path_from_syn_path(&type_path.path);
-                if !path.segments.is_empty() {
-                    out.push(PendingReference {
-                        kind,
-                        path,
-                        location: source_location(file, type_path.path.span()),
-                        note: note.clone(),
-                    });
-                }
-            }
-            extract_path_arguments(&type_path.path, kind, file, note, out);
-        }
-        syn::Type::Reference(reference) => {
-            extract_type_references(&reference.elem, kind, file, note, out);
-        }
-        syn::Type::Ptr(pointer) => {
-            extract_type_references(&pointer.elem, kind, file, note, out);
-        }
-        syn::Type::Slice(slice) => {
-            extract_type_references(&slice.elem, kind, file, note, out);
-        }
-        syn::Type::Array(array) => {
-            extract_type_references(&array.elem, kind, file, note, out);
+        syn::Type::Path(type_path) => extract_path_type(type_path, ty, kind, file, note, out),
+        syn::Type::Reference(_)
+        | syn::Type::Ptr(_)
+        | syn::Type::Slice(_)
+        | syn::Type::Array(_)
+        | syn::Type::Group(_)
+        | syn::Type::Paren(_) => {
+            extract_wrapped_type(ty, kind, file, note, out);
         }
         syn::Type::Tuple(tuple) => {
             for element in &tuple.elems {
                 extract_type_references(element, kind, file, note.clone(), out);
             }
         }
-        syn::Type::Group(group) => {
-            extract_type_references(&group.elem, kind, file, note, out);
-        }
-        syn::Type::Paren(paren) => {
-            extract_type_references(&paren.elem, kind, file, note, out);
-        }
         syn::Type::BareFn(function) => {
             for input in &function.inputs {
                 extract_type_references(&input.ty, kind, file, note.clone(), out);
             }
             if let syn::ReturnType::Type(_, return_type) = &function.output {
-                extract_type_references(return_type, kind, file, note.clone(), out);
+                extract_type_references(return_type, kind, file, note, out);
             }
         }
-        syn::Type::TraitObject(object) => {
-            for bound in &object.bounds {
-                extract_bound_reference(bound, file, "trait object bound".to_owned(), out);
-            }
-        }
-        syn::Type::ImplTrait(implementation) => {
-            for bound in &implementation.bounds {
-                extract_bound_reference(bound, file, "impl-trait bound".to_owned(), out);
-            }
+        syn::Type::TraitObject(_) | syn::Type::ImplTrait(_) => {
+            extract_trait_type_bounds(ty, file, out);
         }
         _ => {}
+    }
+}
+
+fn extract_wrapped_type(
+    ty: &syn::Type,
+    kind: RelationshipKind,
+    file: &Path,
+    note: Option<String>,
+    out: &mut Vec<PendingReference>,
+) {
+    let inner = match ty {
+        syn::Type::Reference(value) => &value.elem,
+        syn::Type::Ptr(value) => &value.elem,
+        syn::Type::Slice(value) => &value.elem,
+        syn::Type::Array(value) => &value.elem,
+        syn::Type::Group(value) => &value.elem,
+        syn::Type::Paren(value) => &value.elem,
+        _ => return,
+    };
+    extract_type_references(inner, kind, file, note, out);
+}
+
+fn extract_path_type(
+    type_path: &syn::TypePath,
+    ty: &syn::Type,
+    kind: RelationshipKind,
+    file: &Path,
+    note: Option<String>,
+    out: &mut Vec<PendingReference>,
+) {
+    if let Some(qself) = &type_path.qself {
+        extract_type_references(&qself.ty, kind, file, note.clone(), out);
+        let trait_path = path_subset(
+            &type_path.path,
+            qself.position,
+            type_path.path.leading_colon.is_some(),
+        );
+        if !trait_path.segments.is_empty() {
+            out.push(PendingReference {
+                kind: RelationshipKind::TraitBound,
+                path: trait_path,
+                location: source_location(file, type_path.span()),
+                note: Some("qualified associated-type bound".to_owned()),
+            });
+        }
+        out.push(PendingReference {
+            kind,
+            path: RustTypePath {
+                root: RustPathRoot::Unresolved,
+                segments: Vec::new(),
+                display: tokens_string(ty),
+            },
+            location: source_location(file, type_path.span()),
+            note: note.clone(),
+        });
+    } else {
+        let path = type_path_from_syn_path(&type_path.path);
+        if !path.segments.is_empty() {
+            out.push(PendingReference {
+                kind,
+                path,
+                location: source_location(file, type_path.path.span()),
+                note: note.clone(),
+            });
+        }
+    }
+    extract_path_arguments(&type_path.path, kind, file, note, out);
+}
+
+fn extract_trait_type_bounds(ty: &syn::Type, file: &Path, out: &mut Vec<PendingReference>) {
+    let bounds = match ty {
+        syn::Type::TraitObject(object) => &object.bounds,
+        syn::Type::ImplTrait(implementation) => &implementation.bounds,
+        _ => return,
+    };
+    for bound in bounds {
+        let note = if matches!(ty, syn::Type::TraitObject(_)) {
+            "trait object bound"
+        } else {
+            "impl-trait bound"
+        };
+        extract_bound_reference(bound, file, note.to_owned(), out);
     }
 }
 
@@ -1261,10 +1288,7 @@ fn extract_angle_arguments(
                 extract_type_references(ty, kind, file, note.clone(), out);
             }
             syn::GenericArgument::AssocType(assoc) => {
-                extract_type_references(&assoc.ty, kind, file, note.clone(), out);
-                if let Some(generics) = &assoc.generics {
-                    extract_angle_arguments(generics, kind, file, note.clone(), out);
-                }
+                extract_associated_type(assoc, kind, file, note.clone(), out);
             }
             syn::GenericArgument::Constraint(constraint) => {
                 for bound in &constraint.bounds {
@@ -1273,6 +1297,19 @@ fn extract_angle_arguments(
             }
             _ => {}
         }
+    }
+}
+
+fn extract_associated_type(
+    assoc: &syn::AssocType,
+    kind: RelationshipKind,
+    file: &Path,
+    note: Option<String>,
+    out: &mut Vec<PendingReference>,
+) {
+    extract_type_references(&assoc.ty, kind, file, note.clone(), out);
+    if let Some(generics) = &assoc.generics {
+        extract_angle_arguments(generics, kind, file, note, out);
     }
 }
 
@@ -1298,43 +1335,42 @@ fn path_subset(path: &syn::Path, end: usize, leading_colon: bool) -> RustTypePat
 }
 
 fn rust_type_path(leading_global: bool, mut segments: Vec<String>) -> RustTypePath {
-    let mut root = if leading_global {
-        RustPathRoot::Global
-    } else {
-        RustPathRoot::Relative
-    };
-    if !leading_global {
-        if segments.first().is_some_and(|segment| segment == "crate") {
-            root = RustPathRoot::Crate;
-            segments.remove(0);
-        } else if segments.first().is_some_and(|segment| segment == "self") {
-            root = RustPathRoot::SelfModule;
-            segments.remove(0);
-        } else {
-            let mut super_count = 0;
-            while segments.first().is_some_and(|segment| segment == "super") {
-                segments.remove(0);
-                super_count += 1;
-            }
-            if super_count > 0 {
-                root = RustPathRoot::Super(super_count);
-            }
-        }
-    }
-
-    let mut display = match &root {
+    let root = path_root(leading_global, &mut segments);
+    let display = match &root {
         RustPathRoot::Crate => "crate::".to_owned(),
         RustPathRoot::SelfModule => "self::".to_owned(),
         RustPathRoot::Super(count) => "super::".repeat(*count),
         RustPathRoot::Global => "::".to_owned(),
         RustPathRoot::Relative | RustPathRoot::Unresolved => String::new(),
-    };
-    display.push_str(&segments.join("::"));
-
+    } + &segments.join("::");
     RustTypePath {
         root,
         segments,
         display,
+    }
+}
+
+fn path_root(leading_global: bool, segments: &mut Vec<String>) -> RustPathRoot {
+    if leading_global {
+        return RustPathRoot::Global;
+    }
+    if segments.first().is_some_and(|segment| segment == "crate") {
+        segments.remove(0);
+        return RustPathRoot::Crate;
+    }
+    if segments.first().is_some_and(|segment| segment == "self") {
+        segments.remove(0);
+        return RustPathRoot::SelfModule;
+    }
+    let mut count = 0;
+    while segments.first().is_some_and(|segment| segment == "super") {
+        segments.remove(0);
+        count += 1;
+    }
+    if count > 0 {
+        RustPathRoot::Super(count)
+    } else {
+        RustPathRoot::Relative
     }
 }
 
@@ -1365,36 +1401,8 @@ fn flatten_use_tree(
             flatten_use_tree(&path.tree, prefix, leading_global, out);
             prefix.pop();
         }
-        syn::UseTree::Name(name) => {
-            if name.ident == "self" {
-                if let Some(alias) = prefix.last() {
-                    out.push(RustImport::Named {
-                        alias: alias.clone(),
-                        path: rust_type_path(leading_global, prefix.clone()),
-                    });
-                }
-            } else {
-                let alias = name.ident.to_string();
-                let mut segments = prefix.clone();
-                segments.push(alias.clone());
-                out.push(RustImport::Named {
-                    alias,
-                    path: rust_type_path(leading_global, segments),
-                });
-            }
-        }
-        syn::UseTree::Rename(rename) => {
-            let mut segments = prefix.clone();
-            if rename.ident != "self" {
-                segments.push(rename.ident.to_string());
-            }
-            if !segments.is_empty() {
-                out.push(RustImport::Named {
-                    alias: rename.rename.to_string(),
-                    path: rust_type_path(leading_global, segments),
-                });
-            }
-        }
+        syn::UseTree::Name(name) => add_use_name(name, prefix, leading_global, out),
+        syn::UseTree::Rename(rename) => add_use_rename(rename, prefix, leading_global, out),
         syn::UseTree::Group(group) => {
             for item in &group.items {
                 flatten_use_tree(item, prefix, leading_global, out);
@@ -1407,6 +1415,48 @@ fn flatten_use_tree(
                 });
             }
         }
+    }
+}
+
+fn add_use_name(
+    name: &syn::UseName,
+    prefix: &[String],
+    leading_global: bool,
+    out: &mut Vec<RustImport>,
+) {
+    if name.ident == "self" {
+        if let Some(alias) = prefix.last() {
+            out.push(RustImport::Named {
+                alias: alias.clone(),
+                path: rust_type_path(leading_global, prefix.to_vec()),
+            });
+        }
+        return;
+    }
+    let alias = name.ident.to_string();
+    let mut segments = prefix.to_vec();
+    segments.push(alias.clone());
+    out.push(RustImport::Named {
+        alias,
+        path: rust_type_path(leading_global, segments),
+    });
+}
+
+fn add_use_rename(
+    rename: &syn::UseRename,
+    prefix: &[String],
+    leading_global: bool,
+    out: &mut Vec<RustImport>,
+) {
+    let mut segments = prefix.to_vec();
+    if rename.ident != "self" {
+        segments.push(rename.ident.to_string());
+    }
+    if !segments.is_empty() {
+        out.push(RustImport::Named {
+            alias: rename.rename.to_string(),
+            path: rust_type_path(leading_global, segments),
+        });
     }
 }
 

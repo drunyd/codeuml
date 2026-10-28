@@ -1,6 +1,8 @@
+use std::path::PathBuf;
+
 use codeuml_core::{
     Codebase, Diagnostic, Provenance, RelationshipEvidence, RelationshipKind, ResolutionStatus,
-    SymbolId, TypeDecl,
+    SourceLocation, SymbolId, TypeDecl,
 };
 use codeuml_diagram::{
     project, DiagramEndpoint, DiagramNode, DiagramProjection, DiagramScope, NeighborhoodDirection,
@@ -8,16 +10,20 @@ use codeuml_diagram::{
 };
 
 use crate::format;
+use crate::source::{self, SourceView};
 use crate::terminal_diagram::{
     layout_terminal_diagram, render_diagram_canvas, DiagramLayoutOptions, TerminalCanvas,
     TerminalDiagramLayout,
 };
 
 const PAGE_STEP: usize = 10;
+const HISTORY_LIMIT: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Mode {
     Browse,
+    Architecture,
+    Source,
     Diagram,
     Search,
     Diagnostics,
@@ -53,6 +59,11 @@ pub(crate) enum Action {
     ScrollDetailsUp,
     ScrollDetailsDown,
     OpenDiagram,
+    OpenArchitecture,
+    OpenSource,
+    Back,
+    Ascend,
+    Descend,
     PanUp,
     PanDown,
     PanLeft,
@@ -61,6 +72,32 @@ pub(crate) enum Action {
     SelectNext,
     CenterDiagram,
     Quit,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct HistoryEntry {
+    scope: DiagramScope,
+    selected: Option<SymbolId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ArchitecturePreview {
+    Children {
+        title: String,
+        rows: Vec<ArchitectureRow>,
+    },
+    Details {
+        title: String,
+        lines: Vec<String>,
+    },
+    Empty,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ArchitectureRow {
+    pub id: SymbolId,
+    pub label: String,
+    pub is_module: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -134,6 +171,13 @@ pub(crate) struct App<'a> {
     visible: Vec<usize>,
     selected: usize,
     mode: Mode,
+    architecture_parent: Option<SymbolId>,
+    architecture_selected: usize,
+    project_root: Option<PathBuf>,
+    source: Option<SourceView>,
+    source_scroll: usize,
+    source_return: Mode,
+    history: Vec<HistoryEntry>,
     focus: Focus,
     search_query: String,
     search_backup: String,
@@ -166,6 +210,13 @@ impl<'a> App<'a> {
             visible: Vec::new(),
             selected: 0,
             mode: Mode::Browse,
+            architecture_parent: None,
+            architecture_selected: 0,
+            project_root: None,
+            source: None,
+            source_scroll: 0,
+            source_return: Mode::Browse,
+            history: Vec::new(),
             focus: Focus::Types,
             search_query: String::new(),
             search_backup: String::new(),
@@ -356,6 +407,8 @@ impl<'a> App<'a> {
 
         match self.mode {
             Mode::Browse => self.handle_browse(action),
+            Mode::Architecture => self.handle_architecture(action),
+            Mode::Source => self.handle_source(action),
             Mode::Diagram => self.handle_diagram(action),
             Mode::Search => self.handle_search(action),
             Mode::Diagnostics => self.handle_diagnostics(action),
@@ -366,58 +419,154 @@ impl<'a> App<'a> {
 
     fn handle_browse(&mut self, action: Action) {
         match action {
-            Action::NavigateUp => self.navigate(-1),
-            Action::NavigateDown => self.navigate(1),
-            Action::PageUp => self.navigate(-(PAGE_STEP as isize)),
-            Action::PageDown => self.navigate(PAGE_STEP as isize),
-            Action::Home => self.navigate_to_boundary(false),
-            Action::End => self.navigate_to_boundary(true),
-            Action::ToggleFocus => self.toggle_focus(),
-            Action::Confirm => {
-                if self.focus == Focus::Relationships {
-                    self.follow_selected_relationship();
-                }
+            Action::NavigateUp | Action::NavigateDown | Action::PageUp | Action::PageDown => {
+                self.handle_browse_navigation(action)
             }
+            Action::Home | Action::End => self.handle_browse_boundary(action),
+            Action::ToggleFocus => self.toggle_focus(),
+            Action::Confirm => self.confirm_browse(),
+            Action::StartSearch | Action::SearchCancel | Action::Cancel => {
+                self.handle_browse_search(action)
+            }
+            Action::OpenScope | Action::OpenDiagnostics | Action::OpenHelp => {
+                self.handle_browse_overlays(action)
+            }
+            Action::ScrollDetailsUp | Action::ScrollDetailsDown => {
+                self.handle_browse_detail_scroll(action)
+            }
+            Action::OpenDiagram | Action::OpenArchitecture | Action::OpenSource | Action::Back => {
+                self.handle_browse_navigation_commands(action)
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_browse_navigation(&mut self, action: Action) {
+        if let Some(delta) = list_navigation_delta(action) {
+            self.navigate(delta);
+        }
+    }
+
+    fn handle_browse_boundary(&mut self, action: Action) {
+        self.navigate_to_boundary(action == Action::End);
+    }
+
+    fn confirm_browse(&mut self) {
+        if self.focus == Focus::Relationships {
+            self.follow_selected_relationship();
+        }
+    }
+
+    fn handle_browse_search(&mut self, action: Action) {
+        match action {
             Action::StartSearch => self.start_search(),
             Action::SearchCancel => self.cancel_search(),
-            Action::OpenScope => self.open_scope_dialog(),
             Action::Cancel => self.cancel_or_clear_search(),
+            _ => {}
+        }
+    }
+
+    fn handle_browse_overlays(&mut self, action: Action) {
+        match action {
+            Action::OpenScope => self.open_scope_dialog(),
             Action::OpenDiagnostics => self.open_diagnostics(),
             Action::OpenHelp => self.open_help(),
+            _ => {}
+        }
+    }
+
+    fn handle_browse_detail_scroll(&mut self, action: Action) {
+        match action {
             Action::ScrollDetailsUp => self.scroll_details(-1),
             Action::ScrollDetailsDown => self.scroll_details(1),
-            Action::OpenDiagram => self.open_diagram(),
             _ => {}
+        }
+    }
+
+    fn handle_browse_navigation_commands(&mut self, action: Action) {
+        match action {
+            Action::OpenDiagram => self.open_diagram(),
+            Action::OpenArchitecture => self.open_architecture(),
+            Action::OpenSource => self.open_source(),
+            Action::Back => self.go_back(),
+            _ => {}
+        }
+    }
+
+    fn handle_architecture(&mut self, action: Action) {
+        match action {
+            Action::OpenSource => self.open_source(),
+            Action::NavigateUp | Action::NavigateDown | Action::PageUp | Action::PageDown => {
+                if let Some(delta) = list_navigation_delta(action) {
+                    self.move_architecture_selection(delta);
+                }
+            }
+            Action::Home => self.architecture_selected = 0,
+            Action::End => {
+                self.architecture_selected = self.architecture_rows().len().saturating_sub(1);
+            }
+            Action::Confirm | Action::Descend => self.open_architecture_selection(),
+            Action::Ascend => self.ascend_architecture(),
+            Action::Cancel => self.leave_architecture_level(),
+            Action::OpenScope | Action::OpenDiagnostics | Action::OpenHelp => {
+                self.handle_browse_overlays(action)
+            }
+            _ => {}
+        }
+    }
+
+    fn ascend_architecture(&mut self) {
+        if self.architecture_parent.is_some() {
+            self.leave_architecture_level();
+        } else {
+            self.status = "Already at the project root.".to_owned();
         }
     }
 
     fn handle_diagram(&mut self, action: Action) {
         match action {
+            Action::PanUp
+            | Action::PanDown
+            | Action::PanLeft
+            | Action::PanRight
+            | Action::NavigateUp
+            | Action::NavigateDown => self.pan_diagram_action(action),
+            Action::PageUp | Action::PageDown => self.page_diagram(action),
+            Action::SelectNext => self.select_diagram_node(1),
+            Action::SelectPrevious => self.select_diagram_node(-1),
+            Action::CenterDiagram => self.center_diagram(),
+            Action::Confirm | Action::Cancel => self.close_diagram(),
+            Action::OpenSource => self.open_source(),
+            Action::OpenScope | Action::OpenDiagnostics | Action::OpenHelp => {
+                self.handle_browse_overlays(action)
+            }
+            _ => {}
+        }
+    }
+
+    fn pan_diagram_action(&mut self, action: Action) {
+        match action {
             Action::PanUp | Action::NavigateUp => self.pan_diagram(0, -1),
             Action::PanDown | Action::NavigateDown => self.pan_diagram(0, 1),
             Action::PanLeft => self.pan_diagram(-1, 0),
             Action::PanRight => self.pan_diagram(1, 0),
-            Action::PageUp => {
-                let page = i32::from(self.diagram_viewport_height.saturating_sub(1).max(1));
-                self.pan_diagram(0, -page);
-            }
-            Action::PageDown => {
-                let page = i32::from(self.diagram_viewport_height.saturating_sub(1).max(1));
-                self.pan_diagram(0, page);
-            }
-            Action::SelectNext => self.select_diagram_node(1),
-            Action::SelectPrevious => self.select_diagram_node(-1),
-            Action::CenterDiagram => {
-                self.center_diagram_on_selected();
-                self.status = "Diagram centered on focused type.".to_owned();
-            }
-            Action::Confirm => self.close_diagram(),
-            Action::Cancel => self.close_diagram(),
-            Action::OpenScope => self.open_scope_dialog(),
-            Action::OpenDiagnostics => self.open_diagnostics(),
-            Action::OpenHelp => self.open_help(),
             _ => {}
         }
+    }
+
+    fn page_diagram(&mut self, action: Action) {
+        let page = i32::from(self.diagram_viewport_height.saturating_sub(1).max(1));
+        let direction = if action == Action::PageUp {
+            -page
+        } else {
+            page
+        };
+        self.pan_diagram(0, direction);
+    }
+
+    fn center_diagram(&mut self) {
+        self.center_diagram_on_selected();
+        self.status = "Diagram centered on focused type.".to_owned();
     }
 
     fn handle_search(&mut self, action: Action) {
@@ -462,27 +611,30 @@ impl<'a> App<'a> {
 
     fn handle_scope_dialog(&mut self, action: Action) {
         match action {
-            Action::NavigateUp => self.move_scope_choice(-1),
-            Action::NavigateDown => self.move_scope_choice(1),
-            Action::PageUp => self.move_scope_choice(-(PAGE_STEP as isize)),
-            Action::PageDown => self.move_scope_choice(PAGE_STEP as isize),
+            Action::NavigateUp | Action::NavigateDown | Action::PageUp | Action::PageDown => {
+                if let Some(delta) = list_navigation_delta(action) {
+                    self.move_scope_choice(delta);
+                }
+            }
             Action::Home => self.scope_choice_selected = 0,
             Action::End => {
                 self.scope_choice_selected = self.scope_choices.len().saturating_sub(1);
             }
-            Action::Confirm => {
-                if let Some(choice) = self.scope_choices.get(self.scope_choice_selected).cloned() {
-                    let return_mode = self.overlay_return;
-                    self.mode = return_mode;
-                    if let Err(error) = self.set_scope(choice.scope()) {
-                        self.status = format!("Cannot switch scope: {error}");
-                    } else if return_mode == Mode::Diagram {
-                        self.center_diagram_on_selected();
-                    }
-                }
-            }
+            Action::Confirm => self.confirm_scope_choice(),
             Action::Cancel => self.mode = self.overlay_return,
             _ => {}
+        }
+    }
+
+    fn confirm_scope_choice(&mut self) {
+        if let Some(choice) = self.scope_choices.get(self.scope_choice_selected).cloned() {
+            let return_mode = self.overlay_return;
+            self.mode = return_mode;
+            if let Err(error) = self.set_scope(choice.scope()) {
+                self.status = format!("Cannot switch scope: {error}");
+            } else if return_mode == Mode::Diagram {
+                self.center_diagram_on_selected();
+            }
         }
     }
 
@@ -490,6 +642,194 @@ impl<'a> App<'a> {
         if matches!(action, Action::Cancel | Action::OpenHelp) {
             self.mode = self.overlay_return;
         }
+    }
+
+    fn move_architecture_selection(&mut self, delta: isize) {
+        let count = self.architecture_rows().len();
+        if count == 0 {
+            self.architecture_selected = 0;
+            return;
+        }
+        self.architecture_selected =
+            (self.architecture_selected as isize + delta).clamp(0, (count - 1) as isize) as usize;
+    }
+
+    fn open_architecture(&mut self) {
+        let selected = self.selected_type_id().cloned();
+        self.architecture_parent = match (&self.projection.scope, selected.as_ref()) {
+            (DiagramScope::Module { module }, Some(id))
+                if self
+                    .codebase
+                    .type_by_id(id)
+                    .is_some_and(|declaration| declaration.module.as_ref() == Some(module)) =>
+            {
+                Some(module.clone())
+            }
+            _ => None,
+        };
+        self.architecture_selected = selected
+            .and_then(|id| self.architecture_rows().iter().position(|row| row.id == id))
+            .unwrap_or(0);
+        self.mode = Mode::Architecture;
+        self.status = format!("Architecture: {} item(s)", self.architecture_rows().len());
+    }
+
+    fn open_architecture_selection(&mut self) {
+        let Some(row) = self
+            .architecture_rows()
+            .get(self.architecture_selected)
+            .cloned()
+        else {
+            self.status = "No modules or types in this location.".to_owned();
+            return;
+        };
+        if row.is_module {
+            self.architecture_parent = Some(row.id.clone());
+            self.architecture_selected = 0;
+            self.status = format!("Opened module {}.", row.label);
+            return;
+        }
+
+        let Some(declaration) = self.codebase.type_by_id(&row.id) else {
+            self.status = "Selected type is no longer available.".to_owned();
+            return;
+        };
+        let id = declaration.id.clone();
+        let scope = declaration
+            .module
+            .clone()
+            .map(|module| DiagramScope::Module { module })
+            .unwrap_or(DiagramScope::Project);
+        if let Err(error) = self.replace_projection(scope, Some(id.clone())) {
+            self.status = format!("Cannot open type: {error}");
+            return;
+        }
+        self.mode = Mode::Browse;
+        self.focus = Focus::Types;
+        self.status = format!("Opened {}.", self.selected_status_value());
+    }
+
+    fn leave_architecture_level(&mut self) {
+        let Some(current) = self.architecture_parent.clone() else {
+            self.mode = Mode::Browse;
+            self.status = self.selected_status();
+            return;
+        };
+        let Some(module) = self.codebase.module(&current) else {
+            self.architecture_parent = None;
+            self.architecture_selected = 0;
+            self.status = "Returned to project architecture.".to_owned();
+            return;
+        };
+        self.architecture_parent = module.parent.clone();
+        self.architecture_selected = self
+            .architecture_rows()
+            .iter()
+            .position(|row| row.id == current)
+            .unwrap_or(0);
+        self.status = format!("Returned to {}.", self.architecture_path_label());
+    }
+
+    pub(crate) fn architecture_rows(&self) -> Vec<ArchitectureRow> {
+        self.rows_for(self.architecture_parent.as_ref())
+    }
+
+    fn rows_for(&self, parent: Option<&SymbolId>) -> Vec<ArchitectureRow> {
+        let mut rows = Vec::new();
+        for module in self
+            .codebase
+            .modules()
+            .iter()
+            .filter(|module| module.parent.as_ref() == parent)
+        {
+            rows.push(ArchitectureRow {
+                id: module.id.clone(),
+                label: format!("{}/", module.name),
+                is_module: true,
+            });
+        }
+        for declaration in self
+            .codebase
+            .types()
+            .iter()
+            .filter(|declaration| declaration.module.as_ref() == parent)
+        {
+            rows.push(ArchitectureRow {
+                id: declaration.id.clone(),
+                label: format!("{}  [{}]", declaration.name, declaration.kind),
+                is_module: false,
+            });
+        }
+        rows.sort_by(|left, right| {
+            (!left.is_module, left.label.to_lowercase(), &left.id).cmp(&(
+                !right.is_module,
+                right.label.to_lowercase(),
+                &right.id,
+            ))
+        });
+        rows
+    }
+
+    /// The level above the current one with the current module selected, or
+    /// `None` at the project root.
+    pub(crate) fn architecture_parent_pane(&self) -> Option<(String, Vec<ArchitectureRow>, usize)> {
+        let current = self.architecture_parent.as_ref()?;
+        let grandparent = self
+            .codebase
+            .module(current)
+            .and_then(|module| module.parent.clone());
+        let rows = self.rows_for(grandparent.as_ref());
+        let selected = rows.iter().position(|row| &row.id == current).unwrap_or(0);
+        let title = grandparent
+            .as_ref()
+            .and_then(|id| self.codebase.module(id))
+            .map(|module| module.qualified_name.clone())
+            .unwrap_or_else(|| self.codebase.name().to_owned());
+        Some((title, rows, selected))
+    }
+
+    pub(crate) fn architecture_preview(&self) -> ArchitecturePreview {
+        let Some(row) = self
+            .architecture_rows()
+            .get(self.architecture_selected)
+            .cloned()
+        else {
+            return ArchitecturePreview::Empty;
+        };
+        if row.is_module {
+            let Some(module) = self.codebase.module(&row.id) else {
+                return ArchitecturePreview::Empty;
+            };
+            ArchitecturePreview::Children {
+                title: format!(
+                    "{} ({}:{})",
+                    module.qualified_name,
+                    module.file.display(),
+                    module.location.line
+                ),
+                rows: self.rows_for(Some(&module.id)),
+            }
+        } else {
+            match self.codebase.type_by_id(&row.id) {
+                Some(declaration) => ArchitecturePreview::Details {
+                    title: declaration.qualified_name.clone(),
+                    lines: format::detail_lines(self.codebase, declaration),
+                },
+                None => ArchitecturePreview::Empty,
+            }
+        }
+    }
+
+    pub(crate) fn architecture_path_label(&self) -> String {
+        self.architecture_parent
+            .as_ref()
+            .and_then(|id| self.codebase.module(id))
+            .map(|module| module.qualified_name.clone())
+            .unwrap_or_else(|| self.codebase.name().to_owned())
+    }
+
+    pub(crate) fn architecture_selected(&self) -> usize {
+        self.architecture_selected
     }
 
     fn navigate(&mut self, delta: isize) {
@@ -748,6 +1088,61 @@ impl<'a> App<'a> {
     }
 
     fn navigate_to_type(&mut self, id: SymbolId) {
+        let previous = self.history_entry();
+        if self.try_navigate_to_type(id) {
+            if let Some(previous) = previous {
+                if previous.selected.as_ref() != self.selected_type_id()
+                    || previous.scope != self.projection.scope
+                {
+                    self.push_history(previous);
+                }
+            }
+        } else {
+            self.status = "Could not navigate to relationship target.".to_owned();
+        }
+    }
+
+    fn history_entry(&self) -> Option<HistoryEntry> {
+        self.selected_type_id().map(|id| HistoryEntry {
+            scope: self.projection.scope.clone(),
+            selected: Some(id.clone()),
+        })
+    }
+
+    fn push_history(&mut self, entry: HistoryEntry) {
+        if self.history.len() == HISTORY_LIMIT {
+            self.history.remove(0);
+        }
+        self.history.push(entry);
+    }
+
+    pub(crate) fn history_depth(&self) -> usize {
+        self.history.len()
+    }
+
+    fn go_back(&mut self) {
+        let Some(entry) = self.history.pop() else {
+            self.status = "No earlier location to go back to.".to_owned();
+            return;
+        };
+        if let Err(error) = self.replace_projection(entry.scope.clone(), entry.selected.clone()) {
+            self.status = format!("Cannot go back: {error}");
+            return;
+        }
+        if self.selected_type_id() != entry.selected.as_ref() {
+            self.search_query.clear();
+            self.search_backup.clear();
+            self.rebuild_visible(entry.selected);
+        }
+        self.focus = Focus::Types;
+        self.status = format!(
+            "Back to {} ({} earlier).",
+            self.selected_status_value(),
+            self.history.len()
+        );
+    }
+
+    fn try_navigate_to_type(&mut self, id: SymbolId) -> bool {
         if let Some(position) = self.visible.iter().position(|index| {
             self.projection
                 .nodes
@@ -760,7 +1155,7 @@ impl<'a> App<'a> {
             self.detail_scroll = 0;
             self.mode = Mode::Browse;
             self.status = format!("Opened {}.", self.selected_status_value());
-            return;
+            return true;
         }
 
         self.search_query.clear();
@@ -769,7 +1164,7 @@ impl<'a> App<'a> {
             self.focus = Focus::Types;
             self.mode = Mode::Browse;
             self.status = format!("Opened {}.", self.selected_status_value());
-            return;
+            return true;
         }
 
         if self
@@ -780,10 +1175,120 @@ impl<'a> App<'a> {
             self.focus = Focus::Types;
             self.mode = Mode::Browse;
             self.status = format!("Opened {}.", self.selected_status_value());
-            return;
+            return true;
         }
 
-        self.status = "Could not navigate to relationship target.".to_owned();
+        false
+    }
+
+    pub(crate) fn with_project_root(mut self, root: PathBuf) -> Self {
+        self.project_root = Some(root);
+        self
+    }
+
+    pub(crate) fn source_view(&self) -> Option<&SourceView> {
+        self.source.as_ref()
+    }
+
+    pub(crate) fn source_scroll(&self) -> usize {
+        self.source_scroll
+    }
+
+    fn source_target(&self) -> Option<(SourceLocation, String)> {
+        if self.mode == Mode::Architecture {
+            return self.architecture_source_target();
+        }
+        if self.mode == Mode::Browse && self.focus == Focus::Relationships {
+            return self.relationship_source_target();
+        }
+        self.selected_source_target()
+    }
+
+    fn architecture_source_target(&self) -> Option<(SourceLocation, String)> {
+        let row = self
+            .architecture_rows()
+            .get(self.architecture_selected)
+            .cloned()?;
+        if row.is_module {
+            let module = self.codebase.module(&row.id)?;
+            Some((
+                module.location.clone(),
+                format!("Module {}", module.qualified_name),
+            ))
+        } else {
+            let declaration = self.codebase.type_by_id(&row.id)?;
+            Some((
+                declaration.location.clone(),
+                declaration.qualified_name.clone(),
+            ))
+        }
+    }
+
+    fn relationship_source_target(&self) -> Option<(SourceLocation, String)> {
+        let rows = self.relationship_rows();
+        let row = rows.get(self.relationship_selected)?;
+        let evidence = row.evidence.first()?;
+        Some((evidence.location.clone(), format!("Evidence: {}", row.kind)))
+    }
+
+    fn selected_source_target(&self) -> Option<(SourceLocation, String)> {
+        let declaration = self.selected_declaration()?;
+        Some((
+            declaration.location.clone(),
+            declaration.qualified_name.clone(),
+        ))
+    }
+
+    fn open_source(&mut self) {
+        let Some(root) = self.project_root.clone() else {
+            self.status = "Source viewing is unavailable: project root unknown.".to_owned();
+            return;
+        };
+        let Some((location, title)) = self.source_target() else {
+            self.status = "Nothing with a source location is selected.".to_owned();
+            return;
+        };
+        match source::load_source(&root, &location, title) {
+            Ok(view) => {
+                self.source_scroll = view.highlight.0.saturating_sub(3);
+                self.status = format!("{}:{}", view.file, view.highlight.0 + 1);
+                self.source = Some(view);
+                self.source_return = self.mode;
+                self.mode = Mode::Source;
+            }
+            Err(message) => self.status = message,
+        }
+    }
+
+    fn close_source(&mut self) {
+        self.mode = self.source_return;
+        self.source = None;
+        self.status = "Closed source view.".to_owned();
+    }
+
+    fn handle_source(&mut self, action: Action) {
+        let last = self
+            .source
+            .as_ref()
+            .map_or(0, |view| view.lines.len().saturating_sub(1));
+        match action {
+            Action::NavigateUp | Action::PanUp => {
+                self.source_scroll = self.source_scroll.saturating_sub(1);
+            }
+            Action::NavigateDown | Action::PanDown => {
+                self.source_scroll = (self.source_scroll + 1).min(last);
+            }
+            Action::PageUp => {
+                self.source_scroll = self.source_scroll.saturating_sub(PAGE_STEP);
+            }
+            Action::PageDown => {
+                self.source_scroll = (self.source_scroll + PAGE_STEP).min(last);
+            }
+            Action::Home => self.source_scroll = 0,
+            Action::End => self.source_scroll = last,
+            Action::Cancel | Action::OpenSource => self.close_source(),
+            _ => {}
+        }
     }
 
     fn selected_status_value(&self) -> String {
@@ -1027,6 +1532,16 @@ impl<'a> App<'a> {
     }
 }
 
+fn list_navigation_delta(action: Action) -> Option<isize> {
+    match action {
+        Action::NavigateUp => Some(-1),
+        Action::NavigateDown => Some(1),
+        Action::PageUp => Some(-(PAGE_STEP as isize)),
+        Action::PageDown => Some(PAGE_STEP as isize),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use codeuml_core::SymbolId;
@@ -1208,6 +1723,228 @@ mod tests {
         );
         assert_eq!(app.visible_type_count(), 1);
         assert_eq!(selected_name(&app), Some("Api"));
+    }
+
+    #[test]
+    fn architecture_tree_drills_through_modules_and_opens_types_in_module_scope() {
+        let mut codebase = fixture_codebase();
+        let models = type_named(&codebase, "Alpha").module.clone().unwrap();
+        let nested = SymbolId::declaration("src/models/nested.rs", "models::nested");
+        codebase
+            .add_module(
+                codeuml_core::Module::new(
+                    nested.clone(),
+                    "nested",
+                    "models::nested",
+                    "src/models/nested.rs",
+                    crate::test_support::location("src/models/nested.rs", 1),
+                )
+                .with_parent(models.clone()),
+            )
+            .expect("unique nested module");
+        let nested_type =
+            SymbolId::declaration("src/models/nested.rs", "models::nested::NestedType");
+        codebase
+            .add_type(
+                TypeDecl::new(
+                    nested_type.clone(),
+                    "NestedType",
+                    "models::nested::NestedType",
+                    codeuml_core::TypeKind::Struct,
+                    crate::test_support::location("src/models/nested.rs", 3),
+                )
+                .with_module(nested.clone()),
+            )
+            .expect("unique nested type");
+
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenArchitecture);
+        assert_eq!(app.mode(), Mode::Architecture);
+        assert_eq!(app.architecture_rows().len(), 2);
+
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Confirm);
+        assert_eq!(app.architecture_path_label(), "models");
+        assert!(app
+            .architecture_rows()
+            .iter()
+            .any(|row| row.id == nested && row.is_module));
+
+        app.handle(Action::Home);
+        app.handle(Action::Confirm);
+        assert_eq!(app.architecture_path_label(), "models::nested");
+        assert_eq!(app.architecture_rows()[0].id, nested_type);
+        app.handle(Action::Confirm);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert_eq!(
+            app.current_scope(),
+            &DiagramScope::Module {
+                module: nested.clone()
+            }
+        );
+        assert_eq!(selected_name(&app), Some("NestedType"));
+
+        app.handle(Action::OpenArchitecture);
+        assert_eq!(app.architecture_path_label(), "models::nested");
+        assert_eq!(
+            app.architecture_rows()[app.architecture_selected()].id,
+            nested_type
+        );
+        app.handle(Action::Cancel);
+        assert_eq!(app.architecture_path_label(), "models");
+        app.handle(Action::Cancel);
+        assert_eq!(app.architecture_path_label(), "fixture-project");
+        assert_eq!(app.architecture_rows()[1].id, models);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::Browse);
+    }
+
+    #[test]
+    fn architecture_ascend_descend_and_panes_track_the_selection() {
+        let codebase = fixture_codebase();
+        let models = type_named(&codebase, "Alpha").module.clone().unwrap();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenArchitecture);
+
+        assert!(app.architecture_parent_pane().is_none());
+        app.handle(Action::Ascend);
+        assert_eq!(app.mode(), Mode::Architecture);
+        assert!(app.status().contains("project root"));
+
+        match app.architecture_preview() {
+            ArchitecturePreview::Children { rows, .. } => {
+                assert_eq!(rows.len(), 1);
+                assert!(!rows[0].is_module);
+            }
+            other => panic!("unexpected preview {other:?}"),
+        }
+
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Descend);
+        assert_eq!(app.architecture_path_label(), "models");
+        let (title, parent_rows, selected) = app.architecture_parent_pane().expect("parent pane");
+        assert_eq!(title, "fixture-project");
+        assert_eq!(parent_rows.len(), 2);
+        assert_eq!(parent_rows[selected].id, models);
+
+        match app.architecture_preview() {
+            ArchitecturePreview::Details { title, .. } => assert_eq!(title, "models::Alpha"),
+            other => panic!("unexpected preview {other:?}"),
+        }
+        app.handle(Action::NavigateDown);
+        match app.architecture_preview() {
+            ArchitecturePreview::Details { title, .. } => assert_eq!(title, "models::Beta"),
+            other => panic!("unexpected preview {other:?}"),
+        }
+
+        app.handle(Action::Ascend);
+        assert_eq!(app.mode(), Mode::Architecture);
+        assert_eq!(app.architecture_path_label(), "fixture-project");
+        assert_eq!(
+            app.architecture_rows()[app.architecture_selected()].id,
+            models
+        );
+    }
+
+    #[test]
+    fn source_view_opens_declaration_and_relationship_evidence_and_scrolls_within_bounds() {
+        let project = crate::test_support::fixture_project("source-view");
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_project_root(project.0.clone());
+
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Source);
+        let view = app.source_view().expect("source view");
+        assert_eq!(view.title, "models::Alpha");
+        assert_eq!(view.highlight, (2, 2));
+        assert_eq!(app.source_scroll(), 0);
+
+        app.handle(Action::End);
+        assert_eq!(app.source_scroll(), 39);
+        app.handle(Action::NavigateDown);
+        assert_eq!(app.source_scroll(), 39);
+        app.handle(Action::Home);
+        app.handle(Action::NavigateUp);
+        assert_eq!(app.source_scroll(), 0);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert!(app.source_view().is_none());
+
+        app.handle(Action::ToggleFocus);
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Source);
+        assert!(app
+            .source_view()
+            .expect("evidence")
+            .title
+            .starts_with("Evidence:"));
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Browse);
+
+        app.handle(Action::OpenDiagram);
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Source);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::Diagram);
+
+        app.handle(Action::Cancel);
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Source);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::Architecture);
+    }
+
+    #[test]
+    fn source_view_reports_missing_root_and_unreadable_files_without_changing_mode() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert!(app.status().contains("unavailable"));
+
+        let empty = crate::test_support::TempDir::new("no-files");
+        let mut app = App::new(&codebase)
+            .expect("initial projection")
+            .with_project_root(empty.0.clone());
+        app.handle(Action::OpenSource);
+        assert_eq!(app.mode(), Mode::Browse);
+        assert!(app.status().contains("Cannot open"), "{}", app.status());
+    }
+
+    #[test]
+    fn back_returns_through_followed_relationships_and_scope_changes() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::Back);
+        assert!(app.status().contains("No earlier"));
+
+        app.handle(Action::ToggleFocus);
+        app.handle(Action::Confirm);
+        assert_eq!(selected_name(&app), Some("Beta"));
+        assert_eq!(app.history_depth(), 1);
+        app.handle(Action::Back);
+        assert_eq!(selected_name(&app), Some("Alpha"));
+        assert_eq!(app.history_depth(), 0);
+
+        app.set_scope(DiagramScope::Module {
+            module: type_named(&codebase, "Api").module.clone().unwrap(),
+        })
+        .expect("api module");
+        app.handle(Action::ToggleFocus);
+        app.handle(Action::Confirm);
+        assert_eq!(app.current_scope(), &DiagramScope::Project);
+        assert_eq!(selected_name(&app), Some("Alpha"));
+        app.handle(Action::Back);
+        assert_eq!(selected_name(&app), Some("Api"));
+        assert_eq!(
+            app.current_scope(),
+            &DiagramScope::Module {
+                module: type_named(&codebase, "Api").module.clone().unwrap()
+            }
+        );
     }
 
     #[test]
@@ -1459,5 +2196,78 @@ mod tests {
 
         app.handle(Action::Quit);
         assert!(app.should_quit());
+    }
+
+    #[test]
+    fn architecture_handler_covers_page_boundaries_and_overlays() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenArchitecture);
+        app.handle(Action::End);
+        assert_eq!(
+            app.architecture_selected(),
+            app.architecture_rows().len() - 1
+        );
+        app.handle(Action::PageUp);
+        app.handle(Action::PageDown);
+        app.handle(Action::Home);
+        assert_eq!(app.architecture_selected(), 0);
+        app.handle(Action::StartSearch);
+        assert_eq!(app.mode(), Mode::Architecture);
+
+        for (open, mode) in [
+            (Action::OpenScope, Mode::ScopeDialog),
+            (Action::OpenDiagnostics, Mode::Diagnostics),
+            (Action::OpenHelp, Mode::Help),
+        ] {
+            app.handle(open);
+            assert_eq!(app.mode(), mode);
+            app.handle(Action::Cancel);
+            assert_eq!(app.mode(), Mode::Architecture);
+        }
+    }
+
+    #[test]
+    fn diagram_handler_covers_all_pan_directions_and_page_actions() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenDiagram);
+        app.set_diagram_viewport(24, 8);
+        for action in [
+            Action::PanUp,
+            Action::PanDown,
+            Action::PanLeft,
+            Action::PanRight,
+            Action::PageUp,
+            Action::PageDown,
+            Action::SelectNext,
+            Action::SelectPrevious,
+            Action::CenterDiagram,
+        ] {
+            app.handle(action);
+        }
+        app.handle(Action::StartSearch);
+        assert_eq!(app.mode(), Mode::Diagram);
+        assert!(app.status().contains("centered"));
+    }
+
+    #[test]
+    fn scope_dialog_covers_boundaries_and_confirm_returns_to_diagram() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("initial projection");
+        app.handle(Action::OpenDiagram);
+        app.handle(Action::OpenScope);
+        app.handle(Action::End);
+        app.handle(Action::PageUp);
+        app.handle(Action::Home);
+        app.handle(Action::PageDown);
+        app.handle(Action::Confirm);
+        assert_eq!(app.mode(), Mode::Diagram);
+        app.handle(Action::StartSearch);
+        assert_eq!(app.mode(), Mode::Diagram);
+
+        app.handle(Action::OpenScope);
+        app.handle(Action::Cancel);
+        assert_eq!(app.mode(), Mode::Diagram);
     }
 }

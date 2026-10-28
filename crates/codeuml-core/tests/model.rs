@@ -413,3 +413,131 @@ fn files_are_not_duplicated_by_path() {
 
     assert_eq!(codebase.files().len(), 1);
 }
+
+#[test]
+fn display_formats_cover_all_type_kinds_and_visibilities() {
+    let kinds = [
+        (TypeKind::Struct, "struct"),
+        (TypeKind::Enum, "enum"),
+        (TypeKind::Trait, "trait"),
+        (TypeKind::Class, "class"),
+        (TypeKind::Interface, "interface"),
+        (TypeKind::TypeAlias, "type alias"),
+        (TypeKind::Union, "union"),
+        (TypeKind::Other("custom".to_owned()), "custom"),
+    ];
+    for (kind, expected) in kinds {
+        assert_eq!(kind.to_string(), expected);
+    }
+    let visibilities = [
+        (Visibility::Public, "pub"),
+        (Visibility::Crate, "pub(crate)"),
+        (Visibility::Super, "pub(super)"),
+        (
+            Visibility::Restricted("crate::nested".to_owned()),
+            "pub(in crate::nested)",
+        ),
+        (Visibility::Private, "private"),
+    ];
+    for (visibility, expected) in visibilities {
+        assert_eq!(visibility.to_string(), expected);
+    }
+}
+
+#[test]
+fn display_formats_cover_all_relationship_kinds_and_severities() {
+    let kinds = [
+        (RelationshipKind::Implements, "implements"),
+        (RelationshipKind::Extends, "extends"),
+        (RelationshipKind::Contains, "contains"),
+        (RelationshipKind::FieldType, "field type"),
+        (RelationshipKind::MethodParameterType, "parameter type"),
+        (RelationshipKind::MethodReturnType, "return type"),
+        (RelationshipKind::TraitBound, "trait bound"),
+        (RelationshipKind::References, "references"),
+        (RelationshipKind::Aliases, "aliases"),
+    ];
+    for (kind, expected) in kinds {
+        assert_eq!(kind.to_string(), expected);
+    }
+    let severities = [
+        (DiagnosticSeverity::Info, "info"),
+        (DiagnosticSeverity::Warning, "warning"),
+        (DiagnosticSeverity::Error, "error"),
+    ];
+    for (severity, expected) in severities {
+        assert_eq!(severity.to_string(), expected);
+    }
+}
+
+#[test]
+fn relationship_target_validation_rejects_each_inconsistent_combination() {
+    let (mut codebase, _, _) = populated_codebase();
+    let source = SymbolId::declaration("src/models.rs", "models::User");
+    let inconsistent = [
+        Relationship {
+            source: source.clone(),
+            target: RelationshipTarget::Symbol(source.clone()),
+            kind: RelationshipKind::FieldType,
+            resolution: ResolutionStatus::Unresolved,
+            provenance: Provenance::Syntax,
+            evidence: Vec::new(),
+        },
+        Relationship {
+            source: source.clone(),
+            target: RelationshipTarget::Unresolved(codeuml_core::UnresolvedReference::new(
+                "Missing",
+            )),
+            kind: RelationshipKind::FieldType,
+            resolution: ResolutionStatus::Inferred,
+            provenance: Provenance::Syntax,
+            evidence: Vec::new(),
+        },
+        Relationship {
+            source: source.clone(),
+            target: RelationshipTarget::Unresolved(codeuml_core::UnresolvedReference::new(
+                "Missing",
+            )),
+            kind: RelationshipKind::FieldType,
+            resolution: ResolutionStatus::Resolved,
+            provenance: Provenance::Syntax,
+            evidence: Vec::new(),
+        },
+    ];
+    for relationship in inconsistent {
+        assert!(matches!(
+            codebase.add_relationship(relationship),
+            Err(ModelError::InconsistentRelationship { .. })
+        ));
+    }
+    let missing = SymbolId::declaration("src/models.rs", "models::Missing");
+    assert!(matches!(codebase.add_relationship(Relationship::resolved(
+        &source, &missing, RelationshipKind::FieldType)),
+        Err(ModelError::UnknownRelationshipTarget(id)) if id == missing));
+}
+
+#[test]
+fn display_names_and_target_accessors_cover_every_variant() {
+    assert_eq!(AnalysisMode::SyntaxOnly.to_string(), "syntax only");
+    assert_eq!(
+        AnalysisMode::SyntaxAndSemantic.to_string(),
+        "syntax + semantic"
+    );
+    assert_eq!(Language::Rust.to_string(), "Rust");
+    assert_eq!(Language::Other("Go".to_owned()).to_string(), "Go");
+
+    let id = SymbolId::declaration("src/models.rs", "models::Target");
+    let symbol = RelationshipTarget::Symbol(id.clone());
+    assert_eq!(symbol.symbol(), Some(&id));
+    assert!(symbol.unresolved().is_none());
+
+    let unresolved =
+        RelationshipTarget::Unresolved(codeuml_core::UnresolvedReference::new("External"));
+    assert!(unresolved.symbol().is_none());
+    assert_eq!(
+        unresolved
+            .unresolved()
+            .map(|reference| reference.name.as_str()),
+        Some("External")
+    );
+}

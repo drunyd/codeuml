@@ -426,3 +426,18 @@ fn binary_crate_roots_use_their_target_name_in_stable_ids() {
         "binary::app::helper::Helper"
     );
 }
+
+#[test]
+fn impls_for_ambiguous_types_are_reported_without_attaching_methods() {
+    let analysis = analyze_fixture("references");
+    let diagnostic = analysis
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code.as_deref() == Some("rust::ambiguous-impl-target"))
+        .expect("ambiguous impl target diagnostic");
+    assert!(diagnostic.message.contains("Duplicated"));
+    assert!(!analysis.types.iter().any(|declaration| declaration
+        .methods
+        .iter()
+        .any(|method| method.name == "skipped")));
+}

@@ -232,6 +232,10 @@ fn resolved_edges_have_boundary_anchors_arrowheads_and_kind_labels() {
         RelationshipKind::Aliases,
         RelationshipKind::TraitBound,
         RelationshipKind::Implements,
+        RelationshipKind::Extends,
+        RelationshipKind::Contains,
+        RelationshipKind::References,
+        RelationshipKind::Aliases,
     ];
     let projection = projection(
         vec![first.clone(), second.clone()],
@@ -277,7 +281,6 @@ fn resolved_edges_have_boundary_anchors_arrowheads_and_kind_labels() {
     assert!(svg.contains("marker-end=\"url(#arrow-"));
     assert!(svg.contains("<marker "));
     assert!(svg.contains("implements"));
-    assert!(!svg.contains("extends"));
 }
 
 #[test]
@@ -574,4 +577,32 @@ fn layout_has_unique_identifiers_for_nodes_and_markers() {
         .collect();
     let unique: BTreeSet<_> = ids.iter().copied().collect();
     assert_eq!(ids.len(), unique.len());
+}
+
+#[test]
+fn renders_self_edges_and_all_relationship_kind_names() {
+    let source = node("Self", "Self", TypeKind::Struct);
+    let mut self_edge = edge(&source, &source, RelationshipKind::Contains);
+    self_edge.source = DiagramEndpoint::Node(source.id.clone());
+    self_edge.target = DiagramEndpoint::Node(source.id.clone());
+    let kinds = [
+        RelationshipKind::Implements,
+        RelationshipKind::Extends,
+        RelationshipKind::Contains,
+        RelationshipKind::FieldType,
+        RelationshipKind::MethodParameterType,
+        RelationshipKind::MethodReturnType,
+        RelationshipKind::TraitBound,
+        RelationshipKind::References,
+        RelationshipKind::Aliases,
+    ];
+    let mut edges = vec![self_edge];
+    edges.extend(kinds.into_iter().map(|kind| edge(&source, &source, kind)));
+    let layout = layout_projection(&projection(vec![source], edges), &SvgOptions::default());
+    assert_eq!(layout.edges.len(), 10);
+    assert!(layout.edges.iter().all(|edge| edge.points.len() >= 2));
+    let rendered = render_svg(&layout);
+    for kind in kinds {
+        assert!(rendered.contains(kind.to_string().as_str()));
+    }
 }

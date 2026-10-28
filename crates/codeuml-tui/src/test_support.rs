@@ -1,8 +1,46 @@
+use std::path::PathBuf;
+
 use codeuml_core::{
     Codebase, Diagnostic, Field, GenericParam, Method, Module, Parameter, Relationship,
     RelationshipEvidence, RelationshipKind, SourceLocation, SymbolId, TypeDecl, TypeKind, Variant,
     Visibility,
 };
+
+pub(crate) struct TempDir(pub PathBuf);
+
+impl TempDir {
+    pub(crate) fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "codeuml-tui-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default()
+        ));
+        std::fs::create_dir_all(&path).expect("temp dir");
+        Self(path)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Source files matching the locations used by `fixture_codebase`.
+pub(crate) fn fixture_project(name: &str) -> TempDir {
+    let dir = TempDir::new(name);
+    std::fs::create_dir_all(dir.0.join("src")).expect("src dir");
+    for file in ["models", "api"] {
+        let text: String = (1..=40)
+            .map(|line| format!("// {file} line {line}\n"))
+            .collect();
+        std::fs::write(dir.0.join(format!("src/{file}.rs")), text).expect("fixture source");
+    }
+    dir
+}
 
 pub(crate) fn location(file: &str, line: u32) -> SourceLocation {
     SourceLocation::new(file, line, 1, line, 20)

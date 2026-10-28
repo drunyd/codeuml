@@ -548,6 +548,14 @@ fn unresolved_reference_target_helpers_are_explicit() {
         .expect("boundary edge");
     assert_eq!(boundary.target.boundary_name(), Some("ExternalThing"));
     assert_eq!(boundary.target.boundary_symbol(), None);
+    assert_eq!(boundary.target.node_id(), None);
+    let node_edge = projection
+        .edges
+        .iter()
+        .find(|edge| !edge.target.is_boundary())
+        .expect("node edge");
+    assert!(node_edge.target.node_id().is_some());
+    assert_eq!(node_edge.target.boundary_name(), None);
     assert_eq!(
         boundary.evidence[0].location.file,
         PathBuf::from("src/api.rs")

@@ -261,3 +261,86 @@ fn extraction_is_deterministic_and_retains_compound_types() {
         );
     }
 }
+
+#[test]
+fn extracts_trait_bounds_associated_constraints_and_nested_import_trees() {
+    let analysis = analyze();
+    assert_eq!(analysis.files_failed, 0);
+
+    let bounds = type_named(&analysis, "BoundShapes");
+    let field = &bounds.fields[0];
+    let refs = references_for_source(&analysis, &field.id, RelationshipKind::TraitBound);
+    path_with_display(&refs, "Marker");
+    let global =
+        references_for_source(&analysis, &bounds.fields[1].id, RelationshipKind::FieldType);
+    assert!(global
+        .iter()
+        .any(|reference| reference.path.root == RustPathRoot::Global));
+    let lifetime_const =
+        references_for_source(&analysis, &bounds.fields[3].id, RelationshipKind::FieldType);
+    assert!(lifetime_const
+        .iter()
+        .any(|reference| reference.path.display == "ArrayHolder"));
+
+    let fields = type_named(&analysis, "Fields");
+    let iterator = fields
+        .methods
+        .iter()
+        .find(|method| method.name == "iterator")
+        .unwrap();
+    let return_refs = references_for_source(&analysis, &iterator.id, RelationshipKind::TraitBound);
+    assert!(return_refs
+        .iter()
+        .any(|reference| reference.path.display == "Iterator"));
+    let argument_refs =
+        references_for_source(&analysis, &iterator.id, RelationshipKind::References);
+    path_with_display(&argument_refs, "Customer");
+
+    assert!(analysis
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code.as_deref() == Some("rust::duplicate-method")));
+
+    let imported = type_named(&analysis, "Imported");
+    let qualified = references_for_source(
+        &analysis,
+        &imported.fields[0].id,
+        RelationshipKind::FieldType,
+    );
+    assert!(qualified[0].imports.iter().any(|import| matches!(import,
+        RustImport::Named { alias, path } if alias == "models" && path.root == RustPathRoot::Super(1))));
+    let renamed = references_for_source(
+        &analysis,
+        &imported.fields[1].id,
+        RelationshipKind::FieldType,
+    );
+    assert!(renamed[0].imports.iter().any(|import| matches!(import,
+        RustImport::Named { alias, path } if alias == "LocalCustomer" && path.segments == vec!["models", "Customer"])));
+    let globbed = references_for_source(
+        &analysis,
+        &imported.fields[3].id,
+        RelationshipKind::FieldType,
+    );
+    assert!(globbed[0].imports.iter().any(|import| matches!(import,
+        RustImport::Glob { path } if path.root == RustPathRoot::Super(1) && path.segments == vec!["other"])));
+    let self_renamed = references_for_source(
+        &analysis,
+        &imported.fields[4].id,
+        RelationshipKind::FieldType,
+    );
+    assert!(self_renamed[0].imports.iter().any(|import| matches!(import,
+        RustImport::Named { alias, path } if alias == "ModelRoot" && path.root == RustPathRoot::Super(1))));
+    let self_import = references_for_source(
+        &analysis,
+        &imported.fields[5].id,
+        RelationshipKind::FieldType,
+    );
+    assert!(self_import[0].imports.iter().any(|import| matches!(import,
+        RustImport::Named { alias, path } if alias == "LocalHere" && path.root == RustPathRoot::SelfModule)));
+
+    let deep = type_named(&analysis, "DeepImport");
+    let deep_refs =
+        references_for_source(&analysis, &deep.fields[0].id, RelationshipKind::FieldType);
+    assert!(deep_refs[0].imports.iter().any(|import| matches!(import,
+        RustImport::Named { alias, path } if alias == "RootCustomer" && path.root == RustPathRoot::Super(2))));
+}

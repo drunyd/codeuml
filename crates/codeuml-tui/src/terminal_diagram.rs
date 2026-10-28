@@ -195,6 +195,13 @@ impl TerminalCanvas {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_wide_text() -> Self {
+        let mut canvas = Self::new(4, 1);
+        canvas.put_text(0, 0, "中x", TerminalDiagramStyle::NodeText);
+        canvas
+    }
+
+    #[cfg(test)]
     pub(crate) fn to_text(&self) -> String {
         let mut text = String::new();
         for y in 0..self.height {
@@ -267,47 +274,38 @@ impl TerminalCanvas {
 
     fn add_segment(&mut self, start: DiagramCellPoint, end: DiagramCellPoint, visual: EdgeVisual) {
         if start.x == end.x {
-            let first = start.y.min(end.y);
-            let last = start.y.max(end.y);
-            for y in first..=last {
-                let mut mask = 0;
-                if y > first {
-                    mask |= direction_mask(if start.y <= end.y {
-                        Direction::Up
-                    } else {
-                        Direction::Down
-                    });
-                }
-                if y < last {
-                    mask |= direction_mask(if start.y <= end.y {
-                        Direction::Down
-                    } else {
-                        Direction::Up
-                    });
-                }
-                self.add_mask(start.x, y, mask, visual);
-            }
+            self.add_axis_segment(start.y, end.y, start.x, true, start.y <= end.y, visual);
         } else if start.y == end.y {
-            let first = start.x.min(end.x);
-            let last = start.x.max(end.x);
-            for x in first..=last {
-                let mut mask = 0;
-                if x > first {
-                    mask |= direction_mask(if start.x <= end.x {
-                        Direction::Left
-                    } else {
-                        Direction::Right
-                    });
-                }
-                if x < last {
-                    mask |= direction_mask(if start.x <= end.x {
-                        Direction::Right
-                    } else {
-                        Direction::Left
-                    });
-                }
-                self.add_mask(x, start.y, mask, visual);
+            self.add_axis_segment(start.x, end.x, start.y, false, start.x <= end.x, visual);
+        }
+    }
+
+    fn add_axis_segment(
+        &mut self,
+        start: u16,
+        end: u16,
+        fixed: u16,
+        vertical: bool,
+        increasing: bool,
+        visual: EdgeVisual,
+    ) {
+        let first = start.min(end);
+        let last = start.max(end);
+        let (backward, forward) = segment_directions(vertical, increasing);
+        for position in first..=last {
+            let mut mask = 0;
+            if position > first {
+                mask |= direction_mask(backward);
             }
+            if position < last {
+                mask |= direction_mask(forward);
+            }
+            let (x, y) = if vertical {
+                (fixed, position)
+            } else {
+                (position, fixed)
+            };
+            self.add_mask(x, y, mask, visual);
         }
     }
 
@@ -349,6 +347,15 @@ enum Direction {
     Right,
 }
 
+fn segment_directions(vertical: bool, increasing: bool) -> (Direction, Direction) {
+    match (vertical, increasing) {
+        (true, true) => (Direction::Up, Direction::Down),
+        (true, false) => (Direction::Down, Direction::Up),
+        (false, true) => (Direction::Left, Direction::Right),
+        (false, false) => (Direction::Right, Direction::Left),
+    }
+}
+
 fn direction_mask(direction: Direction) -> u8 {
     match direction {
         Direction::Up => 1,
@@ -359,25 +366,10 @@ fn direction_mask(direction: Direction) -> u8 {
 }
 
 fn line_glyph(mask: u8) -> char {
-    match mask {
-        0 => ' ',
-        1 => '╵',
-        2 => '╷',
-        4 => '╴',
-        8 => '╶',
-        3 => '│',
-        12 => '─',
-        10 => '┌',
-        6 => '┐',
-        9 => '└',
-        5 => '┘',
-        11 => '├',
-        7 => '┤',
-        14 => '┬',
-        13 => '┴',
-        15 => '┼',
-        _ => '·',
-    }
+    const GLYPHS: [char; 16] = [
+        ' ', '╵', '╷', '│', '╴', '┘', '┐', '┤', '╶', '└', '┌', '├', '─', '┴', '┬', '┼',
+    ];
+    GLYPHS.get(usize::from(mask)).copied().unwrap_or('·')
 }
 
 fn style_for_visual(visual: EdgeVisual) -> TerminalDiagramStyle {
@@ -407,24 +399,57 @@ pub(crate) fn layout_terminal_diagram(
     let max_canvas_width = options
         .max_canvas_width
         .max(max_node_width + NODE_GAP_X * 2);
-    let mut nodes_spec: Vec<(&codeuml_diagram::DiagramNode, NodeContent)> = projection
+    let (nodes, mut cursor_y, mut max_right) =
+        layout_nodes(projection, options, max_node_width, max_canvas_width);
+    let (boundaries, boundary_y, boundary_right) =
+        layout_boundaries(projection, cursor_y, max_node_width, max_canvas_width);
+    cursor_y = boundary_y;
+    max_right = max_right.max(boundary_right);
+    let mut edges = layout_edges(
+        projection,
+        &nodes,
+        &boundaries,
+        &mut cursor_y,
+        &mut max_right,
+    );
+    place_edge_labels(
+        &mut edges,
+        &nodes,
+        &boundaries,
+        &mut cursor_y,
+        &mut max_right,
+    );
+    TerminalDiagramLayout {
+        width: max_right.saturating_add(MARGIN_X).max(24),
+        height: cursor_y.saturating_add(MARGIN_Y).max(8),
+        nodes,
+        boundaries,
+        edges,
+    }
+}
+
+fn layout_nodes(
+    projection: &DiagramProjection,
+    options: &DiagramLayoutOptions,
+    max_node_width: u16,
+    max_canvas_width: u16,
+) -> (Vec<TerminalDiagramNode>, u16, u16) {
+    let specs: Vec<_> = projection
         .nodes
         .iter()
         .map(|node| (node, terminal_node_content(node, options, max_node_width)))
         .collect();
-
-    let node_index: BTreeMap<SymbolId, usize> = projection
+    let indexes: BTreeMap<SymbolId, usize> = projection
         .nodes
         .iter()
         .enumerate()
         .map(|(index, node)| (node.id.clone(), index))
         .collect();
-    let levels = assign_levels(projection, &node_index);
+    let levels = assign_levels(projection, &indexes);
     let mut grouped: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for (index, level) in levels.iter().enumerate() {
         grouped.entry(*level).or_default().push(index);
     }
-
     let mut rects = vec![
         DiagramRect {
             x: 0,
@@ -434,13 +459,40 @@ pub(crate) fn layout_terminal_diagram(
         };
         projection.nodes.len()
     ];
+    let cursor_y = place_node_rects(&specs, &grouped, max_canvas_width, &mut rects);
+    let nodes: Vec<_> = specs
+        .into_iter()
+        .enumerate()
+        .map(|(index, (projected, content))| TerminalDiagramNode {
+            id: projected.id.clone(),
+            name: projected.name.clone(),
+            kind: projected.kind.clone(),
+            rect: rects[index],
+            title: content.title,
+            lines: content.lines,
+        })
+        .collect();
+    let max_right = nodes
+        .iter()
+        .map(|node| node.rect.right())
+        .max()
+        .unwrap_or(0);
+    (nodes, cursor_y, max_right)
+}
+
+fn place_node_rects(
+    specs: &[(&codeuml_diagram::DiagramNode, NodeContent)],
+    grouped: &BTreeMap<usize, Vec<usize>>,
+    max_canvas_width: u16,
+    rects: &mut [DiagramRect],
+) -> u16 {
     let mut cursor_y = MARGIN_Y;
     for level_nodes in grouped.values() {
         let mut row_y = cursor_y;
         let mut row_height = 0u16;
         let mut x = MARGIN_X;
         for index in level_nodes {
-            let spec = &mut nodes_spec[*index].1;
+            let spec = &specs[*index].1;
             if x > MARGIN_X && x + spec.width + MARGIN_X > max_canvas_width {
                 row_y = row_y.saturating_add(row_height).saturating_add(NODE_GAP_Y);
                 row_height = 0;
@@ -457,40 +509,24 @@ pub(crate) fn layout_terminal_diagram(
         }
         cursor_y = row_y.saturating_add(row_height).saturating_add(NODE_GAP_Y);
     }
+    cursor_y
+}
 
-    let mut nodes: Vec<TerminalDiagramNode> = Vec::new();
-    for (index, (projected, content)) in nodes_spec.into_iter().enumerate() {
-        nodes.push(TerminalDiagramNode {
-            id: projected.id.clone(),
-            name: projected.name.clone(),
-            kind: projected.kind.clone(),
-            rect: rects[index],
-            title: content.title,
-            lines: content.lines,
-        });
-    }
-
-    let mut max_right = nodes
-        .iter()
-        .map(|node| node.rect.right())
-        .max()
-        .unwrap_or(0);
-    let boundary_endpoints = collect_boundaries(projection);
+fn layout_boundaries(
+    projection: &DiagramProjection,
+    mut cursor_y: u16,
+    max_node_width: u16,
+    max_canvas_width: u16,
+) -> (Vec<TerminalDiagramBoundary>, u16, u16) {
+    let endpoints = collect_boundaries(projection);
     let mut boundaries = Vec::new();
-    if !boundary_endpoints.is_empty() {
+    let mut max_right = 0;
+    if !endpoints.is_empty() {
         cursor_y = cursor_y.saturating_add(BOUNDARY_GAP);
         let mut x = MARGIN_X;
         let mut row_height = 0u16;
-        for endpoint in boundary_endpoints {
-            let unresolved = matches!(&endpoint, DiagramEndpoint::Boundary { symbol: None, .. });
-            let raw_label = match (&endpoint, unresolved) {
-                (DiagramEndpoint::Boundary { name, .. }, true) => format!("unresolved: {name}"),
-                (DiagramEndpoint::Boundary { name, .. }, false) => format!("boundary: {name}"),
-                (DiagramEndpoint::Node(id), _) => format!("boundary: {id}"),
-            };
-            let width = (UnicodeWidthStr::width(raw_label.as_str()) as u16 + 4)
-                .clamp(NODE_MIN_WIDTH, max_node_width);
-            let label = truncate_text(&raw_label, width.saturating_sub(4));
+        for endpoint in endpoints {
+            let (label, width, unresolved) = boundary_label(&endpoint, max_node_width);
             if x > MARGIN_X && x + width + MARGIN_X > max_canvas_width {
                 cursor_y = cursor_y
                     .saturating_add(row_height)
@@ -515,41 +551,55 @@ pub(crate) fn layout_terminal_diagram(
         }
         cursor_y = cursor_y.saturating_add(row_height);
     }
+    (boundaries, cursor_y, max_right)
+}
 
-    let node_rect_by_id: BTreeMap<SymbolId, DiagramRect> = nodes
+fn boundary_label(endpoint: &DiagramEndpoint, max_node_width: u16) -> (String, u16, bool) {
+    let unresolved = matches!(endpoint, DiagramEndpoint::Boundary { symbol: None, .. });
+    let raw = match (endpoint, unresolved) {
+        (DiagramEndpoint::Boundary { name, .. }, true) => format!("unresolved: {name}"),
+        (DiagramEndpoint::Boundary { name, .. }, false) => format!("boundary: {name}"),
+        (DiagramEndpoint::Node(id), _) => format!("boundary: {id}"),
+    };
+    let width =
+        (UnicodeWidthStr::width(raw.as_str()) as u16 + 4).clamp(NODE_MIN_WIDTH, max_node_width);
+    (
+        truncate_text(&raw, width.saturating_sub(4)),
+        width,
+        unresolved,
+    )
+}
+
+fn layout_edges(
+    projection: &DiagramProjection,
+    nodes: &[TerminalDiagramNode],
+    boundaries: &[TerminalDiagramBoundary],
+    cursor_y: &mut u16,
+    max_right: &mut u16,
+) -> Vec<TerminalDiagramEdge> {
+    let node_rects: BTreeMap<_, _> = nodes
         .iter()
         .map(|node| (node.id.clone(), node.rect))
         .collect();
-    let boundary_rect_by_endpoint: BTreeMap<DiagramEndpoint, DiagramRect> = boundaries
+    let boundary_rects: BTreeMap<_, _> = boundaries
         .iter()
         .map(|boundary| (boundary.endpoint.clone(), boundary.rect))
         .collect();
-    let mut pair_lanes: BTreeMap<(DiagramEndpoint, DiagramEndpoint), usize> = BTreeMap::new();
+    let mut pair_lanes = BTreeMap::<(DiagramEndpoint, DiagramEndpoint), usize>::new();
     let mut edges = Vec::new();
     for edge in &projection.edges {
         let (Some(source), Some(target)) = (
-            endpoint_rect(&edge.source, &node_rect_by_id, &boundary_rect_by_endpoint),
-            endpoint_rect(&edge.target, &node_rect_by_id, &boundary_rect_by_endpoint),
+            endpoint_rect(&edge.source, &node_rects, &boundary_rects),
+            endpoint_rect(&edge.target, &node_rects, &boundary_rects),
         ) else {
             continue;
         };
         let lane = pair_lanes
             .entry((edge.source.clone(), edge.target.clone()))
-            .or_insert(0);
-        let lane_offset = *lane;
+            .or_default();
+        let (points, visual) = route_edge(&edge.source, &edge.target, source, target, *lane, edge);
         *lane += 1;
-        let (points, visual) = route_edge(
-            &edge.source,
-            &edge.target,
-            source,
-            target,
-            lane_offset,
-            edge,
-        );
-        max_right = max_right.max(points.iter().map(|point| point.x + 1).max().unwrap_or(0));
-        if !points.is_empty() {
-            cursor_y = cursor_y.max(points.iter().map(|point| point.y + 1).max().unwrap_or(0));
-        }
+        update_canvas_bounds(&points, cursor_y, max_right);
         edges.push(TerminalDiagramEdge {
             source: edge.source.clone(),
             target: edge.target.clone(),
@@ -561,32 +611,37 @@ pub(crate) fn layout_terminal_diagram(
             label_position: None,
         });
     }
+    edges
+}
 
-    let mut occupied_labels: Vec<DiagramRect> = Vec::new();
-    let all_rects: Vec<DiagramRect> = nodes
+fn update_canvas_bounds(points: &[DiagramCellPoint], cursor_y: &mut u16, max_right: &mut u16) {
+    *max_right = (*max_right).max(points.iter().map(|point| point.x + 1).max().unwrap_or(0));
+    if !points.is_empty() {
+        *cursor_y = (*cursor_y).max(points.iter().map(|point| point.y + 1).max().unwrap_or(0));
+    }
+}
+
+fn place_edge_labels(
+    edges: &mut [TerminalDiagramEdge],
+    nodes: &[TerminalDiagramNode],
+    boundaries: &[TerminalDiagramBoundary],
+    cursor_y: &mut u16,
+    max_right: &mut u16,
+) {
+    let mut occupied = Vec::new();
+    let blocked: Vec<_> = nodes
         .iter()
         .map(|node| node.rect)
         .chain(boundaries.iter().map(|boundary| boundary.rect))
         .collect();
-    for edge in &mut edges {
-        if let Some((position, label_rect)) =
-            place_label(&edge.points, &edge.label, &all_rects, &occupied_labels)
+    for edge in edges {
+        if let Some((position, rect)) = place_label(&edge.points, &edge.label, &blocked, &occupied)
         {
             edge.label_position = Some(position);
-            occupied_labels.push(label_rect);
-            max_right = max_right.max(label_rect.right());
-            cursor_y = cursor_y.max(label_rect.bottom());
+            occupied.push(rect);
+            *max_right = (*max_right).max(rect.right());
+            *cursor_y = (*cursor_y).max(rect.bottom());
         }
-    }
-
-    let width = max_right.saturating_add(MARGIN_X).max(24);
-    let height = cursor_y.saturating_add(MARGIN_Y).max(8);
-    TerminalDiagramLayout {
-        width,
-        height,
-        nodes,
-        boundaries,
-        edges,
     }
 }
 
@@ -721,148 +776,174 @@ fn route_edge(
 ) -> (Vec<DiagramCellPoint>, EdgeVisual) {
     let visual = edge_visual(edge);
     if source_endpoint == target_endpoint && !source_endpoint.is_boundary() {
-        let start = DiagramCellPoint {
-            x: source.right().saturating_sub(1),
-            y: source.y.saturating_add(1),
-        };
-        let end = DiagramCellPoint {
-            x: source.right().saturating_sub(1),
-            y: source.bottom().saturating_sub(2),
-        };
-        let loop_x = source.right().saturating_add(2 + lane as u16 * 2);
-        return (
-            vec![
-                start,
-                DiagramCellPoint {
-                    x: loop_x,
-                    y: start.y,
-                },
-                DiagramCellPoint {
-                    x: loop_x,
-                    y: end.y,
-                },
-                end,
-            ],
-            visual,
-        );
+        return (route_self_edge(source, lane), visual);
     }
+    let points = if use_vertical_route(source, target) {
+        route_vertical_edge(source, target, lane)
+    } else {
+        route_horizontal_edge(source, target, lane)
+    };
+    (points, visual)
+}
 
-    let source_center_x = source.x + source.width / 2;
-    let source_center_y = source.y + source.height / 2;
-    let target_center_x = target.x + target.width / 2;
-    let target_center_y = target.y + target.height / 2;
+fn route_self_edge(source: DiagramRect, lane: usize) -> Vec<DiagramCellPoint> {
+    let start = DiagramCellPoint {
+        x: source.right().saturating_sub(1),
+        y: source.y.saturating_add(1),
+    };
+    let end = DiagramCellPoint {
+        x: source.right().saturating_sub(1),
+        y: source.bottom().saturating_sub(2),
+    };
+    let loop_x = source.right().saturating_add(2 + lane as u16 * 2);
+    vec![
+        start,
+        DiagramCellPoint {
+            x: loop_x,
+            y: start.y,
+        },
+        DiagramCellPoint {
+            x: loop_x,
+            y: end.y,
+        },
+        end,
+    ]
+}
+
+fn use_vertical_route(source: DiagramRect, target: DiagramRect) -> bool {
     let vertical_gap = target.y >= source.bottom() || source.y >= target.bottom();
     let horizontal_gap = target.x >= source.right() || source.x >= target.right();
-    let use_vertical = if vertical_gap {
-        true
-    } else if horizontal_gap {
-        false
-    } else {
-        target_center_y.abs_diff(source_center_y) >= target_center_x.abs_diff(source_center_x)
-    };
+    if vertical_gap {
+        return true;
+    }
+    if horizontal_gap {
+        return false;
+    }
+    let source_y = source.y + source.height / 2;
+    let target_y = target.y + target.height / 2;
+    let source_x = source.x + source.width / 2;
+    let target_x = target.x + target.width / 2;
+    target_y.abs_diff(source_y) >= target_x.abs_diff(source_x)
+}
 
-    if use_vertical {
-        let below = target_center_y >= source_center_y;
-        let start = DiagramCellPoint {
-            x: source_center_x,
-            y: if below {
-                source.bottom()
-            } else {
-                source.y.saturating_sub(1)
-            },
-        };
-        let end = DiagramCellPoint {
-            x: target_center_x,
-            y: if below {
-                target.y.saturating_sub(1)
-            } else {
-                target.bottom()
-            },
-        };
-        let low = start.y.min(end.y).saturating_add(1);
-        let high = start.y.max(end.y).saturating_sub(1);
-        let mut middle = start.y.saturating_add(end.y) / 2;
-        if lane > 0 {
-            middle = middle.saturating_add(lane as u16).clamp(low, high.max(low));
-        }
-        let points = if start.x == end.x {
-            if lane == 0 || high <= low {
-                vec![start, end]
-            } else {
-                let bend = start.x.saturating_add(2 + lane as u16);
-                vec![
-                    start,
-                    DiagramCellPoint { x: bend, y: low },
-                    DiagramCellPoint { x: bend, y: high },
-                    end,
-                ]
-            }
+fn route_vertical_edge(
+    source: DiagramRect,
+    target: DiagramRect,
+    lane: usize,
+) -> Vec<DiagramCellPoint> {
+    let source_x = source.x + source.width / 2;
+    let target_x = target.x + target.width / 2;
+    let source_y = source.y + source.height / 2;
+    let target_y = target.y + target.height / 2;
+    let below = target_y >= source_y;
+    let start = DiagramCellPoint {
+        x: source_x,
+        y: if below {
+            source.bottom()
         } else {
-            vec![
-                start,
-                DiagramCellPoint {
-                    x: start.x,
-                    y: middle,
-                },
-                DiagramCellPoint {
-                    x: end.x,
-                    y: middle,
-                },
-                end,
-            ]
-        };
-        (points, visual)
+            source.y.saturating_sub(1)
+        },
+    };
+    let end = DiagramCellPoint {
+        x: target_x,
+        y: if below {
+            target.y.saturating_sub(1)
+        } else {
+            target.bottom()
+        },
+    };
+    let low = start.y.min(end.y).saturating_add(1);
+    let high = start.y.max(end.y).saturating_sub(1);
+    let middle = lane_middle(start.y, end.y, lane, low, high);
+    if start.x == end.x {
+        if lane == 0 || high <= low {
+            return vec![start, end];
+        }
+        let bend = start.x.saturating_add(2 + lane as u16);
+        vec![
+            start,
+            DiagramCellPoint { x: bend, y: low },
+            DiagramCellPoint { x: bend, y: high },
+            end,
+        ]
     } else {
-        let right = target_center_x >= source_center_x;
-        let start = DiagramCellPoint {
-            x: if right {
-                source.right()
-            } else {
-                source.x.saturating_sub(1)
+        vec![
+            start,
+            DiagramCellPoint {
+                x: start.x,
+                y: middle,
             },
-            y: source_center_y,
-        };
-        let end = DiagramCellPoint {
-            x: if right {
-                target.x.saturating_sub(1)
-            } else {
-                target.right()
+            DiagramCellPoint {
+                x: end.x,
+                y: middle,
             },
-            y: target_center_y,
-        };
-        let low = start.x.min(end.x).saturating_add(1);
-        let high = start.x.max(end.x).saturating_sub(1);
-        let mut middle = start.x.saturating_add(end.x) / 2;
-        if lane > 0 {
-            middle = middle.saturating_add(lane as u16).clamp(low, high.max(low));
-        }
-        let points = if start.y == end.y {
-            if lane == 0 || high <= low {
-                vec![start, end]
-            } else {
-                let bend = start.y.saturating_add(2 + lane as u16);
-                vec![
-                    start,
-                    DiagramCellPoint { x: low, y: bend },
-                    DiagramCellPoint { x: high, y: bend },
-                    end,
-                ]
-            }
+            end,
+        ]
+    }
+}
+
+fn route_horizontal_edge(
+    source: DiagramRect,
+    target: DiagramRect,
+    lane: usize,
+) -> Vec<DiagramCellPoint> {
+    let source_x = source.x + source.width / 2;
+    let target_x = target.x + target.width / 2;
+    let source_y = source.y + source.height / 2;
+    let target_y = target.y + target.height / 2;
+    let right = target_x >= source_x;
+    let start = DiagramCellPoint {
+        x: if right {
+            source.right()
         } else {
-            vec![
-                start,
-                DiagramCellPoint {
-                    x: middle,
-                    y: start.y,
-                },
-                DiagramCellPoint {
-                    x: middle,
-                    y: end.y,
-                },
-                end,
-            ]
-        };
-        (points, visual)
+            source.x.saturating_sub(1)
+        },
+        y: source_y,
+    };
+    let end = DiagramCellPoint {
+        x: if right {
+            target.x.saturating_sub(1)
+        } else {
+            target.right()
+        },
+        y: target_y,
+    };
+    let low = start.x.min(end.x).saturating_add(1);
+    let high = start.x.max(end.x).saturating_sub(1);
+    let middle = lane_middle(start.x, end.x, lane, low, high);
+    if start.y == end.y {
+        if lane == 0 || high <= low {
+            return vec![start, end];
+        }
+        let bend = start.y.saturating_add(2 + lane as u16);
+        vec![
+            start,
+            DiagramCellPoint { x: low, y: bend },
+            DiagramCellPoint { x: high, y: bend },
+            end,
+        ]
+    } else {
+        vec![
+            start,
+            DiagramCellPoint {
+                x: middle,
+                y: start.y,
+            },
+            DiagramCellPoint {
+                x: middle,
+                y: end.y,
+            },
+            end,
+        ]
+    }
+}
+
+fn lane_middle(start: u16, end: u16, lane: usize, low: u16, high: u16) -> u16 {
+    let middle = start.saturating_add(end) / 2;
+    if lane == 0 {
+        middle
+    } else {
+        middle.saturating_add(lane as u16).clamp(low, high.max(low))
     }
 }
 
@@ -903,59 +984,65 @@ fn place_label(
 ) -> Option<((u16, u16), DiagramRect)> {
     let width = UnicodeWidthStr::width(label).max(1) as u16;
     for pair in points.windows(2) {
-        let (start, end) = (pair[0], pair[1]);
-        if start.y == end.y {
-            let x = start.x.min(end.x).saturating_add(1);
-            let y = start.y.saturating_sub(1);
-            let rect = DiagramRect {
-                x,
-                y,
-                width,
-                height: 1,
-            };
-            if x > 0
-                && y > 0
-                && blocked.iter().all(|blocked| !blocked.intersects(rect))
-                && existing.iter().all(|label| !label.intersects(rect))
-            {
-                return Some(((x, y), rect));
-            }
-        } else if start.x == end.x {
-            let x = start.x.saturating_add(1);
-            let y = start
-                .y
-                .min(end.y)
-                .saturating_add(start.y.abs_diff(end.y) / 2);
-            let rect = DiagramRect {
-                x,
-                y,
-                width,
-                height: 1,
-            };
-            if x > 0
-                && y > 0
-                && blocked.iter().all(|blocked| !blocked.intersects(rect))
-                && existing.iter().all(|label| !label.intersects(rect))
-            {
-                return Some(((x, y), rect));
+        if let Some(rect) = segment_label(pair[0], pair[1], width) {
+            if label_position_available(rect, blocked, existing) {
+                return Some(((rect.x, rect.y), rect));
             }
         }
     }
+    fallback_label(points, width)
+        .filter(|rect| label_rect_clear(*rect, blocked, existing))
+        .map(|rect| ((rect.x, rect.y), rect))
+}
 
+fn segment_label(
+    start: DiagramCellPoint,
+    end: DiagramCellPoint,
+    width: u16,
+) -> Option<DiagramRect> {
+    if start.y == end.y {
+        Some(DiagramRect {
+            x: start.x.min(end.x).saturating_add(1),
+            y: start.y.saturating_sub(1),
+            width,
+            height: 1,
+        })
+    } else if start.x == end.x {
+        Some(DiagramRect {
+            x: start.x.saturating_add(1),
+            y: start
+                .y
+                .min(end.y)
+                .saturating_add(start.y.abs_diff(end.y) / 2),
+            width,
+            height: 1,
+        })
+    } else {
+        None
+    }
+}
+
+fn fallback_label(points: &[DiagramCellPoint], width: u16) -> Option<DiagramRect> {
     let middle = points.get(points.len() / 2)?;
-    let rect = DiagramRect {
+    Some(DiagramRect {
         x: middle.x.saturating_add(1),
         y: middle.y,
         width,
         height: 1,
-    };
-    if blocked.iter().all(|blocked| !blocked.intersects(rect))
-        && existing.iter().all(|label| !label.intersects(rect))
-    {
-        Some(((rect.x, rect.y), rect))
-    } else {
-        None
-    }
+    })
+}
+
+fn label_position_available(
+    rect: DiagramRect,
+    blocked: &[DiagramRect],
+    existing: &[DiagramRect],
+) -> bool {
+    rect.x > 0 && rect.y > 0 && label_rect_clear(rect, blocked, existing)
+}
+
+fn label_rect_clear(rect: DiagramRect, blocked: &[DiagramRect], existing: &[DiagramRect]) -> bool {
+    blocked.iter().all(|other| !other.intersects(rect))
+        && existing.iter().all(|other| !other.intersects(rect))
 }
 
 pub(crate) fn render_diagram_canvas(
@@ -963,60 +1050,77 @@ pub(crate) fn render_diagram_canvas(
     selected: Option<&SymbolId>,
 ) -> TerminalCanvas {
     let mut canvas = TerminalCanvas::new(layout.width.max(1), layout.height.max(1));
-    for edge in &layout.edges {
+    draw_edges(&mut canvas, &layout.edges);
+    draw_boundaries(&mut canvas, &layout.boundaries);
+    draw_nodes(&mut canvas, &layout.nodes, selected);
+    draw_edge_labels(&mut canvas, &layout.edges);
+    canvas
+}
+
+fn draw_edges(canvas: &mut TerminalCanvas, edges: &[TerminalDiagramEdge]) {
+    for edge in edges {
         for pair in edge.points.windows(2) {
             canvas.add_segment(pair[0], pair[1], edge.visual);
         }
     }
     canvas.finalize_edges();
-    for edge in &layout.edges {
-        if let Some((last, previous)) = edge
-            .points
-            .last()
-            .zip(edge.points.get(edge.points.len().saturating_sub(2)))
-        {
-            let direction = if last.x > previous.x {
-                Direction::Right
-            } else if last.x < previous.x {
-                Direction::Left
-            } else if last.y > previous.y {
-                Direction::Down
-            } else {
-                Direction::Up
-            };
-            let (x, y) = match direction {
-                Direction::Right => (last.x.saturating_sub(1), last.y),
-                Direction::Left => (last.x.saturating_add(1), last.y),
-                Direction::Down => (last.x, last.y.saturating_sub(1)),
-                Direction::Up => (last.x, last.y.saturating_add(1)),
-            };
-            canvas.put_arrow(x, y, direction, edge.visual);
-        }
+    for edge in edges {
+        draw_edge_arrow(canvas, edge);
     }
+}
 
-    for boundary in &layout.boundaries {
+fn draw_edge_arrow(canvas: &mut TerminalCanvas, edge: &TerminalDiagramEdge) {
+    let Some((last, previous)) = edge
+        .points
+        .last()
+        .zip(edge.points.get(edge.points.len().saturating_sub(2)))
+    else {
+        return;
+    };
+    let direction = if last.x > previous.x {
+        Direction::Right
+    } else if last.x < previous.x {
+        Direction::Left
+    } else if last.y > previous.y {
+        Direction::Down
+    } else {
+        Direction::Up
+    };
+    let (x, y) = match direction {
+        Direction::Right => (last.x.saturating_sub(1), last.y),
+        Direction::Left => (last.x.saturating_add(1), last.y),
+        Direction::Down => (last.x, last.y.saturating_sub(1)),
+        Direction::Up => (last.x, last.y.saturating_add(1)),
+    };
+    canvas.put_arrow(x, y, direction, edge.visual);
+}
+
+fn draw_boundaries(canvas: &mut TerminalCanvas, boundaries: &[TerminalDiagramBoundary]) {
+    for boundary in boundaries {
+        let style = if boundary.unresolved {
+            TerminalDiagramStyle::Unresolved
+        } else {
+            TerminalDiagramStyle::Boundary
+        };
         draw_box(
-            &mut canvas,
+            canvas,
             boundary.rect,
             &boundary.label,
             &[],
-            if boundary.unresolved {
-                TerminalDiagramStyle::Unresolved
-            } else {
-                TerminalDiagramStyle::Boundary
-            },
-            if boundary.unresolved {
-                TerminalDiagramStyle::Unresolved
-            } else {
-                TerminalDiagramStyle::Boundary
-            },
+            style,
+            style,
             true,
         );
     }
+}
 
-    for node in &layout.nodes {
-        let is_selected = selected.is_some_and(|id| id == &node.id);
-        let (border, text) = if is_selected {
+fn draw_nodes(
+    canvas: &mut TerminalCanvas,
+    nodes: &[TerminalDiagramNode],
+    selected: Option<&SymbolId>,
+) {
+    for node in nodes {
+        let (border, text) = if selected.is_some_and(|id| id == &node.id) {
             (
                 TerminalDiagramStyle::NodeSelectedBorder,
                 TerminalDiagramStyle::NodeSelectedText,
@@ -1028,7 +1132,7 @@ pub(crate) fn render_diagram_canvas(
             )
         };
         draw_box(
-            &mut canvas,
+            canvas,
             node.rect,
             &node.title,
             &node.lines,
@@ -1037,13 +1141,14 @@ pub(crate) fn render_diagram_canvas(
             false,
         );
     }
+}
 
-    for edge in &layout.edges {
+fn draw_edge_labels(canvas: &mut TerminalCanvas, edges: &[TerminalDiagramEdge]) {
+    for edge in edges {
         if let Some((x, y)) = edge.label_position {
             canvas.put_text(x, y, &edge.label, style_for_visual(edge.visual));
         }
     }
-    canvas
 }
 
 fn draw_box(
@@ -1410,5 +1515,155 @@ mod tests {
         }
         let canvas = render_diagram_canvas(&layout, None);
         assert!(canvas.width > 0 && canvas.height > 0);
+    }
+
+    #[test]
+    fn glyph_table_and_canvas_segments_cover_every_direction() {
+        let expected = [
+            ' ', '╵', '╷', '│', '╴', '┘', '┐', '┤', '╶', '└', '┌', '├', '─', '┴', '┬', '┼',
+        ];
+        for (mask, glyph) in expected.into_iter().enumerate() {
+            assert_eq!(line_glyph(mask as u8), glyph);
+        }
+        assert_eq!(line_glyph(16), '·');
+
+        let mut canvas = TerminalCanvas::new(8, 4);
+        canvas.put_text(1, 0, "中a", TerminalDiagramStyle::NodeText);
+        assert!(canvas.cell(2, 0).unwrap().continuation);
+        assert_eq!(canvas.cell(3, 0).unwrap().ch, 'a');
+        canvas.add_segment(
+            DiagramCellPoint { x: 1, y: 3 },
+            DiagramCellPoint { x: 4, y: 3 },
+            EdgeVisual::Default,
+        );
+        canvas.add_segment(
+            DiagramCellPoint { x: 6, y: 3 },
+            DiagramCellPoint { x: 6, y: 0 },
+            EdgeVisual::Default,
+        );
+        canvas.finalize_edges();
+        assert_eq!(canvas.cell(2, 3).unwrap().ch, '─');
+        assert_eq!(canvas.cell(6, 2).unwrap().ch, '│');
+    }
+
+    #[test]
+    fn routing_handles_leftward_and_boundary_endpoints_and_label_fallbacks() {
+        let source = node("Source", "Source", TypeKind::Struct, &[]);
+        let target = node("Target", "Target", TypeKind::Struct, &[]);
+        let leftward = edge(&source, &target, RelationshipKind::FieldType);
+        let (points, _) = route_edge(
+            &leftward.source,
+            &leftward.target,
+            DiagramRect {
+                x: 10,
+                y: 10,
+                width: 8,
+                height: 6,
+            },
+            DiagramRect {
+                x: 0,
+                y: 10,
+                width: 8,
+                height: 6,
+            },
+            0,
+            &leftward,
+        );
+        assert!(points[0].x > points.last().unwrap().x);
+
+        let mut boundary_edge = leftward.clone();
+        boundary_edge.target = DiagramEndpoint::Boundary {
+            symbol: None,
+            name: "Missing".into(),
+        };
+        let (points, visual) = route_edge(
+            &boundary_edge.source,
+            &boundary_edge.target,
+            DiagramRect {
+                x: 1,
+                y: 2,
+                width: 8,
+                height: 6,
+            },
+            DiagramRect {
+                x: 20,
+                y: 2,
+                width: 8,
+                height: 4,
+            },
+            0,
+            &boundary_edge,
+        );
+        assert_eq!(visual, EdgeVisual::Boundary);
+        assert!(!points.is_empty());
+
+        assert!(place_label(&[], "label", &[], &[]).is_none());
+        let points = [
+            DiagramCellPoint { x: 4, y: 4 },
+            DiagramCellPoint { x: 4, y: 8 },
+        ];
+        let blocked_segment = DiagramRect {
+            x: 5,
+            y: 6,
+            width: 5,
+            height: 1,
+        };
+        let fallback =
+            place_label(&points, "label", &[blocked_segment], &[]).expect("fallback position");
+        assert_eq!(fallback.0, (5, 8));
+        let blocked_all = DiagramRect {
+            x: 5,
+            y: 6,
+            width: 5,
+            height: 3,
+        };
+        assert!(place_label(&points, "label", &[blocked_all], &[]).is_none());
+    }
+
+    #[test]
+    fn edge_visuals_and_styles_cover_every_relationship_category() {
+        let source = node("Source", "Source", TypeKind::Struct, &[]);
+        let target = node("Target", "Target", TypeKind::Struct, &[]);
+        let cases = [
+            (
+                RelationshipKind::FieldType,
+                EdgeVisual::Default,
+                TerminalDiagramStyle::EdgeDefault,
+            ),
+            (
+                RelationshipKind::MethodReturnType,
+                EdgeVisual::Method,
+                TerminalDiagramStyle::EdgeMethod,
+            ),
+            (
+                RelationshipKind::Implements,
+                EdgeVisual::Implements,
+                TerminalDiagramStyle::EdgeImplements,
+            ),
+            (
+                RelationshipKind::TraitBound,
+                EdgeVisual::Trait,
+                TerminalDiagramStyle::EdgeTrait,
+            ),
+            (
+                RelationshipKind::Aliases,
+                EdgeVisual::Alias,
+                TerminalDiagramStyle::EdgeAlias,
+            ),
+        ];
+        for (kind, visual, style) in cases {
+            let relationship = edge(&source, &target, kind);
+            assert_eq!(edge_visual(&relationship), visual);
+            assert_eq!(style_for_visual(visual), style);
+        }
+        let mut unresolved = edge(&source, &target, RelationshipKind::FieldType);
+        unresolved.resolution = ResolutionStatus::Unresolved;
+        assert_eq!(edge_visual(&unresolved), EdgeVisual::Unresolved);
+        unresolved.resolution = ResolutionStatus::Inferred;
+        unresolved.target = DiagramEndpoint::Boundary {
+            symbol: None,
+            name: "Missing".into(),
+        };
+        assert_eq!(edge_visual(&unresolved), EdgeVisual::Boundary);
     }
 }

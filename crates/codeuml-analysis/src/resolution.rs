@@ -210,14 +210,27 @@ impl ResolutionIndex {
     }
 
     fn resolve(&self, reference: &RustReference) -> Resolution {
+        if let Some(resolution) = self.classify_early_exit(reference) {
+            return resolution;
+        }
+        let path = &reference.path;
+        let mut candidates = BTreeSet::new();
+        let mut external_signal = path.root == RustPathRoot::Global;
+        self.gather_direct_candidates(reference, path, &mut candidates);
+        if path.root == RustPathRoot::Relative {
+            external_signal |= self.gather_import_candidates(reference, &mut candidates);
+        }
+        self.resolve_candidates(path, candidates, external_signal)
+    }
+
+    fn classify_early_exit(&self, reference: &RustReference) -> Option<Resolution> {
         let path = &reference.path;
         if path.root == RustPathRoot::Unresolved {
-            return Resolution::Unresolved;
+            return Some(Resolution::Unresolved);
         }
         if path.segments.is_empty() {
-            return Resolution::External;
+            return Some(Resolution::External);
         }
-
         let first = path.segments[0].as_str();
         if first == "Self"
             || reference
@@ -225,54 +238,98 @@ impl ResolutionIndex {
                 .iter()
                 .any(|name| name == first)
         {
-            return Resolution::External;
+            return Some(Resolution::External);
         }
         if path.root == RustPathRoot::Relative && is_primitive(first) {
-            return Resolution::External;
+            return Some(Resolution::External);
         }
+        None
+    }
 
-        let mut candidates = BTreeSet::new();
-        let mut external_signal = path.root == RustPathRoot::Global;
-
+    fn gather_direct_candidates(
+        &self,
+        reference: &RustReference,
+        path: &RustTypePath,
+        candidates: &mut BTreeSet<SymbolId>,
+    ) {
         for candidate in self.direct_candidates(reference, path) {
-            self.add_candidate(&candidate, &mut candidates);
+            self.add_candidate(&candidate, candidates);
         }
+    }
 
-        if path.root == RustPathRoot::Relative {
-            for import in &reference.imports {
-                match import {
-                    RustImport::Named {
-                        alias,
-                        path: import,
-                    } if alias == first => {
-                        for base in self.direct_candidates(reference, import) {
-                            if is_known_external_path(&base) {
-                                external_signal = true;
-                            }
-                            let candidate = if path.segments.len() == 1 {
-                                base
-                            } else {
-                                format!("{base}::{}", path.segments[1..].join("::"))
-                            };
-                            self.add_candidate(&candidate, &mut candidates);
-                        }
-                    }
-                    RustImport::Glob { path: import } => {
-                        for base in self.direct_candidates(reference, import) {
-                            if is_known_external_path(&base) {
-                                external_signal = true;
-                            }
-                            self.add_candidate(
-                                &format!("{base}::{}", path.segments.join("::")),
-                                &mut candidates,
-                            );
-                        }
-                    }
-                    _ => {}
-                }
+    fn gather_import_candidates(
+        &self,
+        reference: &RustReference,
+        candidates: &mut BTreeSet<SymbolId>,
+    ) -> bool {
+        let first = reference.path.segments[0].as_str();
+        let mut external_signal = false;
+        for import in &reference.imports {
+            external_signal |= self.add_import_candidates(reference, import, first, candidates);
+        }
+        external_signal
+    }
+
+    fn add_import_candidates(
+        &self,
+        reference: &RustReference,
+        import: &RustImport,
+        first: &str,
+        candidates: &mut BTreeSet<SymbolId>,
+    ) -> bool {
+        match import {
+            RustImport::Named { alias, path } if alias == first => {
+                self.add_named_import_candidates(reference, path, candidates)
             }
+            RustImport::Glob { path } => {
+                self.add_glob_import_candidates(reference, path, candidates)
+            }
+            _ => false,
         }
+    }
 
+    fn add_named_import_candidates(
+        &self,
+        reference: &RustReference,
+        import_path: &RustTypePath,
+        candidates: &mut BTreeSet<SymbolId>,
+    ) -> bool {
+        let mut external_signal = false;
+        for base in self.direct_candidates(reference, import_path) {
+            external_signal |= is_known_external_path(&base);
+            let candidate = if reference.path.segments.len() == 1 {
+                base
+            } else {
+                format!("{base}::{}", reference.path.segments[1..].join("::"))
+            };
+            self.add_candidate(&candidate, candidates);
+        }
+        external_signal
+    }
+
+    fn add_glob_import_candidates(
+        &self,
+        reference: &RustReference,
+        import_path: &RustTypePath,
+        candidates: &mut BTreeSet<SymbolId>,
+    ) -> bool {
+        let mut external_signal = false;
+        for base in self.direct_candidates(reference, import_path) {
+            external_signal |= is_known_external_path(&base);
+            self.add_candidate(
+                &format!("{base}::{}", reference.path.segments.join("::")),
+                candidates,
+            );
+        }
+        external_signal
+    }
+
+    fn resolve_candidates(
+        &self,
+        path: &RustTypePath,
+        candidates: BTreeSet<SymbolId>,
+        external_signal: bool,
+    ) -> Resolution {
         if candidates.len() == 1 {
             return Resolution::Type(candidates.into_iter().next().expect("one candidate"));
         }
@@ -289,13 +346,7 @@ impl ResolutionIndex {
                     .collect(),
             );
         }
-
-        if external_signal
-            || is_known_external_path(&path.display)
-            || (path.root == RustPathRoot::Relative
-                && path.segments.len() == 1
-                && KNOWN_EXTERNAL_TYPES.contains(&first))
-        {
+        if is_external_reference(path, external_signal) {
             Resolution::External
         } else {
             Resolution::Unresolved
@@ -341,6 +392,14 @@ impl ResolutionIndex {
             }
         }
     }
+}
+
+fn is_external_reference(path: &RustTypePath, external_signal: bool) -> bool {
+    external_signal
+        || is_known_external_path(&path.display)
+        || (path.root == RustPathRoot::Relative
+            && path.segments.len() == 1
+            && KNOWN_EXTERNAL_TYPES.contains(&path.segments[0].as_str()))
 }
 
 fn module_qualified(crate_key: &str, module_path: &[String]) -> String {

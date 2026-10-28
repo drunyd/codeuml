@@ -238,6 +238,55 @@ fn module_and_neighborhood_scopes_are_selectable_and_invalid_targets_fail() {
 }
 
 #[test]
+fn conflicting_scope_selectors_keep_their_usage_errors() {
+    let project = standard_project("scope-conflicts");
+    let cases = [
+        (
+            vec![
+                "--format", "svg", "--scope", "project", "--module", "models",
+            ],
+            "--module/--type cannot be used with project scope",
+        ),
+        (
+            vec![
+                "--format", "svg", "--scope", "module", "--module", "models", "--type", "Customer",
+            ],
+            "--type cannot be used with module scope",
+        ),
+        (
+            vec![
+                "--format",
+                "svg",
+                "--scope",
+                "neighborhood",
+                "--module",
+                "models",
+                "--type",
+                "Customer",
+            ],
+            "--module cannot be used with neighborhood scope",
+        ),
+        (
+            vec![
+                "--format", "svg", "--module", "models", "--type", "Customer",
+            ],
+            "use only one of --module or --type, or specify --scope",
+        ),
+    ];
+
+    for (args, expected) in cases {
+        let result = project
+            .command()
+            .args(&args)
+            .output()
+            .expect("scope validation");
+        assert!(!result.status.success(), "args: {args:?}");
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+}
+
+#[test]
 fn ambiguous_short_type_names_are_reported() {
     let project = TempProject::new("ambiguous");
     project.write_project("ambiguous-app");

@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, Focus, Mode},
+    app::{App, ArchitecturePreview, ArchitectureRow, Focus, Mode},
     format,
     terminal_diagram::TerminalDiagramStyle,
 };
@@ -21,24 +21,37 @@ pub(crate) fn render(frame: &mut Frame<'_>, app: &mut App<'_>) {
     .split(frame.area());
 
     render_header(frame, app, chunks[0]);
-    let background = match app.mode() {
-        Mode::Diagram => Mode::Diagram,
-        Mode::Help | Mode::ScopeDialog => app.overlay_return(),
-        _ => Mode::Browse,
-    };
-    if app.mode() == Mode::Diagnostics {
-        render_diagnostics(frame, app, chunks[1]);
-    } else if background == Mode::Diagram {
-        render_diagram(frame, app, chunks[1]);
-    } else {
-        render_browser(frame, app, chunks[1]);
-    }
+    let background = background_mode(app);
+    render_main_view(frame, app, chunks[1], background);
     render_footer(frame, app, chunks[2]);
 
     match app.mode() {
         Mode::Help => render_help(frame, chunks[1]),
         Mode::ScopeDialog => render_scope_dialog(frame, app, chunks[1]),
         _ => {}
+    }
+}
+
+fn background_mode(app: &App<'_>) -> Mode {
+    match app.mode() {
+        Mode::Architecture => Mode::Architecture,
+        Mode::Diagram => Mode::Diagram,
+        Mode::Help | Mode::ScopeDialog => app.overlay_return(),
+        _ => Mode::Browse,
+    }
+}
+
+fn render_main_view(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect, background: Mode) {
+    if app.mode() == Mode::Diagnostics {
+        render_diagnostics(frame, app, area);
+    } else if app.mode() == Mode::Source {
+        render_source(frame, app, area);
+    } else if background == Mode::Diagram {
+        render_diagram(frame, app, area);
+    } else if background == Mode::Architecture {
+        render_architecture(frame, app, area);
+    } else {
+        render_browser(frame, app, area);
     }
 }
 
@@ -64,68 +77,282 @@ fn render_diagram(frame: &mut Frame<'_>, app: &mut App<'_>, area: Rect) {
 
     let canvas = app.diagram_canvas();
     let (pan_x, pan_y) = app.diagram_pan();
+    let lines = diagram_lines(canvas, inner, pan_x, pan_y);
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn diagram_lines(
+    canvas: &crate::terminal_diagram::TerminalCanvas,
+    viewport: Rect,
+    pan_x: u16,
+    pan_y: u16,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    for row in 0..inner.height {
+    for row in 0..viewport.height {
         let canvas_y = pan_y.saturating_add(row);
         if canvas_y >= canvas.height {
             break;
         }
-        let mut spans: Vec<Span<'static>> = Vec::new();
-        let mut current_style = Style::default();
-        let mut current_text = String::new();
-        for column in 0..inner.width {
-            let canvas_x = pan_x.saturating_add(column);
-            if canvas_x >= canvas.width {
-                break;
-            }
-            let Some(cell) = canvas.cell(canvas_x, canvas_y) else {
-                continue;
-            };
-            if cell.continuation {
-                if canvas_x == pan_x {
-                    if current_style != Style::default() {
-                        spans.push(Span::styled(
-                            std::mem::take(&mut current_text),
-                            current_style,
-                        ));
-                    } else {
-                        current_text.clear();
-                    }
-                    spans.push(Span::raw(" "));
-                }
-                continue;
-            }
-            let style = diagram_cell_style(cell.style);
-            if !current_text.is_empty() && style != current_style {
-                spans.push(Span::styled(
-                    std::mem::take(&mut current_text),
-                    current_style,
-                ));
-            }
-            current_style = style;
-            current_text.push(cell.ch);
-        }
-        if !current_text.is_empty() {
-            spans.push(Span::styled(current_text, current_style));
-        }
-        lines.push(Line::from(spans));
+        lines.push(diagram_row(canvas, viewport.width, pan_x, canvas_y));
     }
+    lines
+}
+
+fn diagram_row(
+    canvas: &crate::terminal_diagram::TerminalCanvas,
+    width: u16,
+    pan_x: u16,
+    canvas_y: u16,
+) -> Line<'static> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut current_style = Style::default();
+    let mut current_text = String::new();
+    for column in 0..width {
+        let canvas_x = pan_x.saturating_add(column);
+        if canvas_x >= canvas.width {
+            break;
+        }
+        let Some(cell) = canvas.cell(canvas_x, canvas_y) else {
+            continue;
+        };
+        if cell.continuation {
+            add_continuation_span(
+                &mut spans,
+                &mut current_text,
+                current_style,
+                canvas_x == pan_x,
+            );
+            continue;
+        }
+        let style = diagram_cell_style(cell.style);
+        if !current_text.is_empty() && style != current_style {
+            spans.push(Span::styled(
+                std::mem::take(&mut current_text),
+                current_style,
+            ));
+        }
+        current_style = style;
+        current_text.push(cell.ch);
+    }
+    if !current_text.is_empty() {
+        spans.push(Span::styled(current_text, current_style));
+    }
+    Line::from(spans)
+}
+
+fn add_continuation_span(
+    spans: &mut Vec<Span<'static>>,
+    current_text: &mut String,
+    current_style: Style,
+    clipped_at_start: bool,
+) {
+    if !clipped_at_start {
+        return;
+    }
+    if current_style != Style::default() {
+        spans.push(Span::styled(std::mem::take(current_text), current_style));
+    } else {
+        current_text.clear();
+    }
+    spans.push(Span::raw(" "));
+}
+
+fn render_source(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
+    let Some(view) = app.source_view() else {
+        return;
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!("Source - {} ({})", view.title, view.file));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let number_width = view.lines.len().max(1).to_string().len();
+    let lines: Vec<Line<'static>> = view
+        .lines
+        .iter()
+        .enumerate()
+        .skip(app.source_scroll())
+        .take(usize::from(inner.height))
+        .map(|(index, text)| {
+            let highlighted = (view.highlight.0..=view.highlight.1).contains(&index);
+            let style = if highlighted {
+                Style::default()
+                    .bg(Color::Blue)
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            Line::from(vec![
+                Span::styled(
+                    format!("{:>number_width$} ", index + 1),
+                    Style::default().fg(Color::DarkGray),
+                ),
+                Span::styled(text.clone(), style),
+            ])
+        })
+        .collect();
     frame.render_widget(Paragraph::new(lines), inner);
+}
+
+fn render_architecture(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
+    let has_parent_pane = area.width >= 90;
+    let chunks = if has_parent_pane {
+        Layout::horizontal([
+            Constraint::Percentage(22),
+            Constraint::Percentage(33),
+            Constraint::Percentage(45),
+        ])
+        .split(area)
+    } else {
+        Layout::horizontal([Constraint::Percentage(45), Constraint::Percentage(55)]).split(area)
+    };
+    let (current_area, preview_area) = if has_parent_pane {
+        match app.architecture_parent_pane() {
+            Some((title, rows, selected)) => {
+                render_architecture_list(frame, chunks[0], &title, &rows, Some(selected), false);
+            }
+            None => frame.render_widget(
+                Paragraph::new("Project root")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .block(Block::default().borders(Borders::ALL).title("Parent")),
+                chunks[0],
+            ),
+        }
+        (chunks[1], chunks[2])
+    } else {
+        (chunks[0], chunks[1])
+    };
+
+    let rows = app.architecture_rows();
+    let selected = (!rows.is_empty()).then(|| app.architecture_selected());
+    render_architecture_list(
+        frame,
+        current_area,
+        &app.architecture_path_label(),
+        &rows,
+        selected,
+        true,
+    );
+
+    match app.architecture_preview() {
+        ArchitecturePreview::Children { title, rows } => {
+            if rows.is_empty() {
+                frame.render_widget(
+                    Paragraph::new("Empty module.")
+                        .style(Style::default().fg(Color::DarkGray))
+                        .block(Block::default().borders(Borders::ALL).title(title)),
+                    preview_area,
+                );
+            } else {
+                render_architecture_list(frame, preview_area, &title, &rows, None, false);
+            }
+        }
+        ArchitecturePreview::Details { title, lines } => frame.render_widget(
+            Paragraph::new(lines.join("\n"))
+                .block(Block::default().borders(Borders::ALL).title(title))
+                .wrap(Wrap { trim: false }),
+            preview_area,
+        ),
+        ArchitecturePreview::Empty => frame.render_widget(
+            Paragraph::new("Nothing selected.")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(Block::default().borders(Borders::ALL).title("Preview")),
+            preview_area,
+        ),
+    }
+}
+
+fn render_architecture_list(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    title: &str,
+    rows: &[ArchitectureRow],
+    selected: Option<usize>,
+    active: bool,
+) {
+    let items: Vec<ListItem<'_>> = rows
+        .iter()
+        .map(|row| {
+            let style = if row.is_module {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default()
+            };
+            ListItem::new(Line::from(Span::styled(row.label.clone(), style)))
+        })
+        .collect();
+    let mut state = ListState::default();
+    state.select(selected);
+    let highlight = if active {
+        Style::default()
+            .bg(Color::Blue)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().add_modifier(Modifier::BOLD | Modifier::REVERSED)
+    };
+    let border = if active {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(border)
+                .title(title.to_owned()),
+        )
+        .highlight_style(highlight)
+        .highlight_symbol(if active { "> " } else { "  " });
+    frame.render_stateful_widget(list, area, &mut state);
 }
 
 fn diagram_cell_style(style: TerminalDiagramStyle) -> Style {
     match style {
         TerminalDiagramStyle::Blank => Style::default(),
+        TerminalDiagramStyle::NodeBorder
+        | TerminalDiagramStyle::NodeText
+        | TerminalDiagramStyle::NodeSelectedBorder
+        | TerminalDiagramStyle::NodeSelectedText => node_cell_style(style),
+        TerminalDiagramStyle::Boundary | TerminalDiagramStyle::Unresolved => {
+            boundary_cell_style(style)
+        }
+        TerminalDiagramStyle::EdgeDefault
+        | TerminalDiagramStyle::EdgeMethod
+        | TerminalDiagramStyle::EdgeImplements
+        | TerminalDiagramStyle::EdgeTrait
+        | TerminalDiagramStyle::EdgeAlias
+        | TerminalDiagramStyle::EdgeBoundary
+        | TerminalDiagramStyle::EdgeUnresolved => edge_cell_style(style),
+    }
+}
+
+fn node_cell_style(style: TerminalDiagramStyle) -> Style {
+    match style {
         TerminalDiagramStyle::NodeBorder => Style::default().fg(Color::Gray),
         TerminalDiagramStyle::NodeText => Style::default().fg(Color::White),
-        TerminalDiagramStyle::NodeSelectedBorder => Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-        TerminalDiagramStyle::NodeSelectedText => Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
+        TerminalDiagramStyle::NodeSelectedBorder | TerminalDiagramStyle::NodeSelectedText => {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        }
+        _ => Style::default(),
+    }
+}
+
+fn boundary_cell_style(style: TerminalDiagramStyle) -> Style {
+    match style {
         TerminalDiagramStyle::Boundary => Style::default().fg(Color::Yellow),
         TerminalDiagramStyle::Unresolved => Style::default().fg(Color::Red),
+        _ => Style::default(),
+    }
+}
+
+fn edge_cell_style(style: TerminalDiagramStyle) -> Style {
+    match style {
         TerminalDiagramStyle::EdgeDefault => Style::default().fg(Color::Gray),
         TerminalDiagramStyle::EdgeMethod => Style::default().fg(Color::DarkGray),
         TerminalDiagramStyle::EdgeImplements => Style::default().fg(Color::Blue),
@@ -133,6 +360,7 @@ fn diagram_cell_style(style: TerminalDiagramStyle) -> Style {
         TerminalDiagramStyle::EdgeAlias => Style::default().fg(Color::Cyan),
         TerminalDiagramStyle::EdgeBoundary => Style::default().fg(Color::Yellow),
         TerminalDiagramStyle::EdgeUnresolved => Style::default().fg(Color::Red),
+        _ => Style::default(),
     }
 }
 
@@ -151,10 +379,15 @@ fn render_header(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
             Style::default().fg(Color::Yellow),
         ),
         Span::raw(format!(
-            "  |  {} types  |  {} edges  |  {} diagnostics",
+            "  |  {} types  |  {} edges  |  {} diagnostics{}",
             projection.nodes.len(),
             projection.edges.len(),
-            app.diagnostics().len()
+            app.diagnostics().len(),
+            if app.history_depth() > 0 {
+                format!("  |  Backspace: back ({})", app.history_depth())
+            } else {
+                String::new()
+            }
         )),
     ]);
     let header = Paragraph::new(vec![
@@ -349,17 +582,21 @@ fn render_footer(frame: &mut Frame<'_>, app: &App<'_>, area: Rect) {
     };
     let keys = match app.mode() {
         Mode::Browse if app.focus() == Focus::Relationships => {
-            "Up/Down select  Enter follow  Tab types  s scope  d diagnostics  ? help  q quit  Ctrl+C quit"
+            "Up/Down select  Enter follow  o evidence source  Backspace back  Tab types  s scope  d diagnostics  ? help  q quit"
         }
         Mode::Browse => {
-            "Up/Down or j/k move  Tab panels  / search  s scope  d diagnostics  ? help  q quit"
+            "Up/Down or j/k move  Tab panels  / search  o source  a architecture  s scope  d diagnostics  ? help  q quit"
+        }
+        Mode::Source => "Up/Down PgUp/PgDn Home/End scroll  Esc/b/o close  Ctrl+C quit",
+        Mode::Architecture => {
+            "j/k move  l/Enter open  h up a level  o source  Esc/b up or exit  s scope  d diagnostics  ? help  q quit"
         }
         Mode::Search => "Type to filter  Backspace  Enter accept  Esc cancel  Ctrl+C quit",
         Mode::Diagnostics => "Up/Down scroll  PgUp/PgDn  Home/End  Esc back  Ctrl+C quit",
         Mode::ScopeDialog => "Up/Down select  Enter apply  Esc cancel",
         Mode::Help => "Esc or ? close help",
         Mode::Diagram => {
-            "Arrows/hjkl pan  Tab/BackTab or n/p focus  c center  Enter details  Esc/b browser  s scope  d diagnostics  ? help  q quit"
+            "Arrows/hjkl pan  Tab/BackTab or n/p focus  c center  o source  Enter details  Esc/b browser  s scope  d diagnostics  ? help  q quit"
         }
     };
     let footer = Paragraph::new(vec![
@@ -389,8 +626,11 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from("/                  Incremental search (name or qualified name)"),
         Line::from("Esc                Clear search / close view"),
         Line::from("s                  Choose project, module, or neighborhood scope"),
+        Line::from("a                  Browse the hierarchical module architecture"),
         Line::from("d                  Diagnostics browser"),
         Line::from("v                  Open the terminal UML diagram"),
+        Line::from("o                  Show source for the selected type, module, or evidence"),
+        Line::from("Backspace          Go back after following a relationship"),
         Line::from("Ctrl+U / Ctrl+D    Scroll type details"),
         Line::from("?                  Toggle this help"),
         Line::from("q                  Quit from the browser"),
@@ -398,6 +638,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect) {
         Line::from(""),
         Line::from("Diagram: arrows/hjkl pan; Tab/BackTab or n/p focus; c center."),
         Line::from("Diagram: Enter opens details; Esc/b/v returns to the browser."),
+        Line::from("Architecture: j/k move, l/Enter open module/type, h up a level, Esc/b exit."),
         Line::from("Resolved relationships navigate to their target type."),
         Line::from(
             "Boundary targets may open in project scope; unresolved targets do not navigate.",
@@ -459,6 +700,7 @@ mod tests {
 
     use super::*;
     use crate::app::Action;
+    use crate::terminal_diagram::TerminalCanvas;
     use crate::test_support::fixture_codebase;
 
     fn render_text(app: &mut App<'_>, width: u16, height: u16) -> String {
@@ -585,8 +827,71 @@ mod tests {
         assert!(text.contains("Enter details"), "{text}");
 
         app.set_diagram_viewport(20, 6);
+        app.handle(Action::PanRight);
+        assert!(app.diagram_pan().0 > 0);
         let text = render_text(&mut app, 20, 6);
         assert_eq!(text.lines().count(), 6);
+    }
+
+    #[test]
+    fn architecture_view_shows_parent_current_and_preview_panes() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("app");
+        app.handle(Action::OpenArchitecture);
+        let text = render_text(&mut app, 120, 32);
+
+        assert!(text.contains("Project root"), "{text}");
+        assert!(text.contains("fixture-project"), "{text}");
+        assert!(text.contains("> api/"), "{text}");
+        assert!(text.contains("models/"), "{text}");
+        assert!(text.contains("api (src/api.rs:1)"), "{text}");
+        assert!(text.contains("Api  [struct]"), "{text}");
+        assert!(text.contains("h up a level"), "{text}");
+
+        app.handle(Action::NavigateDown);
+        app.handle(Action::Descend);
+        let text = render_text(&mut app, 120, 32);
+        assert!(text.contains("Alpha  [struct]"), "{text}");
+        assert!(text.contains("Beta  [struct]"), "{text}");
+        assert!(text.contains("Shape  [enum]"), "{text}");
+        assert!(text.contains("Name: Alpha"), "{text}");
+        assert!(text.contains("Fields"), "{text}");
+        assert!(!text.contains("Project root"), "{text}");
+
+        let narrow = render_text(&mut app, 70, 24);
+        assert!(narrow.contains("Alpha  [struct]"), "{narrow}");
+    }
+
+    #[test]
+    fn architecture_view_shows_modules_and_selected_module_preview() {
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase).expect("app");
+        app.handle(Action::OpenArchitecture);
+        let text = render_text(&mut app, 120, 32);
+
+        assert!(text.contains("api/"), "{text}");
+        assert!(text.contains("src/api.rs"), "{text}");
+        assert!(text.contains("l/Enter open"), "{text}");
+    }
+
+    #[test]
+    fn source_view_renders_numbered_lines_with_title_and_controls() {
+        let project = crate::test_support::fixture_project("render-source");
+        let codebase = fixture_codebase();
+        let mut app = App::new(&codebase)
+            .expect("app")
+            .with_project_root(project.0.clone());
+        app.handle(Action::OpenSource);
+        let text = render_text(&mut app, 120, 30);
+        assert!(text.contains("Source - models::Alpha"), "{text}");
+        assert!(text.contains("// models line 3"), "{text}");
+        assert!(text.contains("Esc/b/o close"), "{text}");
+
+        app.handle(Action::Cancel);
+        app.handle(Action::ToggleFocus);
+        app.handle(Action::Confirm);
+        let text = render_text(&mut app, 140, 30);
+        assert!(text.contains("Backspace: back (1)"), "{text}");
     }
 
     #[test]
@@ -601,5 +906,46 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("api::Api"), "{text}");
+    }
+
+    #[test]
+    fn diagram_styles_map_every_canvas_variant() {
+        let cases = [
+            (TerminalDiagramStyle::Blank, None),
+            (TerminalDiagramStyle::NodeBorder, Some(Color::Gray)),
+            (TerminalDiagramStyle::NodeText, Some(Color::White)),
+            (
+                TerminalDiagramStyle::NodeSelectedBorder,
+                Some(Color::Yellow),
+            ),
+            (TerminalDiagramStyle::NodeSelectedText, Some(Color::Yellow)),
+            (TerminalDiagramStyle::Boundary, Some(Color::Yellow)),
+            (TerminalDiagramStyle::Unresolved, Some(Color::Red)),
+            (TerminalDiagramStyle::EdgeDefault, Some(Color::Gray)),
+            (TerminalDiagramStyle::EdgeMethod, Some(Color::DarkGray)),
+            (TerminalDiagramStyle::EdgeImplements, Some(Color::Blue)),
+            (TerminalDiagramStyle::EdgeTrait, Some(Color::Magenta)),
+            (TerminalDiagramStyle::EdgeAlias, Some(Color::Cyan)),
+            (TerminalDiagramStyle::EdgeBoundary, Some(Color::Yellow)),
+            (TerminalDiagramStyle::EdgeUnresolved, Some(Color::Red)),
+        ];
+        for (diagram_style, foreground) in cases {
+            assert_eq!(diagram_cell_style(diagram_style).fg, foreground);
+        }
+        let selected = diagram_cell_style(TerminalDiagramStyle::NodeSelectedBorder);
+        assert_eq!(selected.add_modifier(Modifier::BOLD), selected);
+    }
+
+    #[test]
+    fn panned_wide_character_continuation_and_canvas_bounds_render_safely() {
+        let canvas = TerminalCanvas::with_wide_text();
+        let lines = diagram_lines(&canvas, Rect::new(0, 0, 4, 4), 1, 0);
+        assert_eq!(lines.len(), 1);
+        let visible: String = lines[0]
+            .spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect();
+        assert_eq!(visible, " x ");
     }
 }

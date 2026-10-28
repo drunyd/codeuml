@@ -154,7 +154,55 @@ struct NodeContent {
 pub fn layout_projection(projection: &DiagramProjection, options: &SvgOptions) -> DiagramLayout {
     let max_node_width = options.max_node_width.max(NODE_MIN_WIDTH);
     let max_canvas_width = options.max_canvas_width.max(max_node_width + MARGIN * 2.0);
+    let (mut nodes, node_index, node_boxes, mut cursor_y) =
+        layout_nodes(projection, options, max_node_width, max_canvas_width);
+    let (boundaries, boundary_index, boundary_right, cursor_y_after_boundaries) =
+        layout_boundaries(projection, max_node_width, max_canvas_width, cursor_y);
+    cursor_y = cursor_y_after_boundaries;
+    let mut max_right = nodes
+        .iter()
+        .map(|node| node.x + node.width)
+        .fold(0.0_f64, f64::max)
+        .max(boundary_right);
+    let edges = layout_edges(
+        projection,
+        &nodes,
+        &node_index,
+        &node_boxes,
+        &boundaries,
+        &boundary_index,
+        &mut max_right,
+    );
+    let (legend, width, height) =
+        layout_legend_and_size(options, max_canvas_width, max_right, cursor_y);
+    let empty_message = projection
+        .nodes
+        .is_empty()
+        .then(|| "No types in the selected scope.".to_owned());
+    DiagramLayout {
+        title: options.title.clone(),
+        subtitle: options.subtitle.clone(),
+        width,
+        height,
+        nodes: std::mem::take(&mut nodes),
+        boundaries,
+        edges,
+        legend,
+        empty_message,
+    }
+}
 
+fn layout_nodes(
+    projection: &DiagramProjection,
+    options: &SvgOptions,
+    max_node_width: f64,
+    max_canvas_width: f64,
+) -> (
+    Vec<LayoutNode>,
+    BTreeMap<SymbolId, usize>,
+    Vec<LayoutRect>,
+    f64,
+) {
     let contents: Vec<NodeContent> = projection
         .nodes
         .iter()
@@ -166,9 +214,7 @@ pub fn layout_projection(projection: &DiagramProjection, options: &SvgOptions) -
         .enumerate()
         .map(|(index, node)| (node.id.clone(), index))
         .collect();
-
     let levels = assign_levels(projection, &node_index);
-
     let mut nodes: Vec<LayoutNode> = projection
         .nodes
         .iter()
@@ -185,12 +231,19 @@ pub fn layout_projection(projection: &DiagramProjection, options: &SvgOptions) -
             lines: content.lines,
         })
         .collect();
+    let cursor_y = place_nodes(&mut nodes, &levels, max_canvas_width);
+    let boxes = nodes
+        .iter()
+        .map(|node| LayoutRect::new(node.x, node.y, node.width, node.height))
+        .collect();
+    (nodes, node_index, boxes, cursor_y)
+}
 
+fn place_nodes(nodes: &mut [LayoutNode], levels: &[usize], max_canvas_width: f64) -> f64 {
     let mut grouped: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for (index, level) in levels.iter().enumerate() {
         grouped.entry(*level).or_default().push(index);
     }
-
     let mut cursor_y = TITLE_HEIGHT;
     for level_nodes in grouped.values() {
         let mut row_y = cursor_y;
@@ -210,177 +263,217 @@ pub fn layout_projection(projection: &DiagramProjection, options: &SvgOptions) -
         }
         cursor_y = row_y + row_height + NODE_GAP_Y;
     }
+    cursor_y
+}
 
-    let node_boxes: Vec<LayoutRect> = nodes
-        .iter()
-        .map(|node| LayoutRect::new(node.x, node.y, node.width, node.height))
-        .collect();
-    let mut max_right = nodes
-        .iter()
-        .map(|node| node.x + node.width)
-        .fold(0.0_f64, f64::max);
-
-    let boundary_endpoints = collect_boundaries(projection);
+fn layout_boundaries(
+    projection: &DiagramProjection,
+    max_node_width: f64,
+    max_canvas_width: f64,
+    mut cursor_y: f64,
+) -> (
+    Vec<LayoutBoundary>,
+    BTreeMap<DiagramEndpoint, usize>,
+    f64,
+    f64,
+) {
+    let endpoints = collect_boundaries(projection);
     let mut boundaries = Vec::new();
-    if !boundary_endpoints.is_empty() {
-        cursor_y += BOUNDARY_GAP;
-        let mut x = MARGIN;
-        let mut row_height = 0.0_f64;
-        for endpoint in boundary_endpoints {
-            let label = boundary_label(&endpoint);
-            let width = estimate_text_width(&label, 11.0) + NODE_PADDING * 2.0;
-            let width = width.clamp(180.0, max_node_width);
-            if x > MARGIN && x + width + MARGIN > max_canvas_width {
-                cursor_y += row_height + BOUNDARY_GAP;
-                row_height = 0.0;
-                x = MARGIN;
-            }
-            boundaries.push(LayoutBoundary {
-                endpoint,
-                label: truncate_text(&label, width - NODE_PADDING * 2.0, 11.0),
-                unresolved: false,
-                x,
-                y: cursor_y,
-                width,
-                height: BOUNDARY_HEIGHT,
-            });
-            row_height = row_height.max(BOUNDARY_HEIGHT);
-            x += width + BOUNDARY_GAP;
-        }
-        cursor_y += row_height + BOUNDARY_GAP;
+    if !endpoints.is_empty() {
+        cursor_y = place_boundaries(
+            endpoints,
+            &mut boundaries,
+            max_node_width,
+            max_canvas_width,
+            cursor_y,
+        );
     }
-    for boundary in &mut boundaries {
+    mark_unresolved_boundaries(&mut boundaries);
+    let max_right = boundaries
+        .iter()
+        .map(|boundary| boundary.x + boundary.width)
+        .fold(0.0_f64, f64::max);
+    let index = boundaries
+        .iter()
+        .enumerate()
+        .map(|(index, boundary)| (boundary.endpoint.clone(), index))
+        .collect();
+    (boundaries, index, max_right, cursor_y)
+}
+
+fn place_boundaries(
+    endpoints: Vec<DiagramEndpoint>,
+    boundaries: &mut Vec<LayoutBoundary>,
+    max_node_width: f64,
+    max_canvas_width: f64,
+    mut cursor_y: f64,
+) -> f64 {
+    cursor_y += BOUNDARY_GAP;
+    let mut x = MARGIN;
+    let mut row_height = 0.0_f64;
+    for endpoint in endpoints {
+        let label = boundary_label(&endpoint);
+        let width =
+            (estimate_text_width(&label, 11.0) + NODE_PADDING * 2.0).clamp(180.0, max_node_width);
+        if x > MARGIN && x + width + MARGIN > max_canvas_width {
+            cursor_y += row_height + BOUNDARY_GAP;
+            row_height = 0.0;
+            x = MARGIN;
+        }
+        boundaries.push(LayoutBoundary {
+            endpoint,
+            label: truncate_text(&label, width - NODE_PADDING * 2.0, 11.0),
+            unresolved: false,
+            x,
+            y: cursor_y,
+            width,
+            height: BOUNDARY_HEIGHT,
+        });
+        row_height = row_height.max(BOUNDARY_HEIGHT);
+        x += width + BOUNDARY_GAP;
+    }
+    cursor_y + row_height + BOUNDARY_GAP
+}
+
+fn mark_unresolved_boundaries(boundaries: &mut [LayoutBoundary]) {
+    for boundary in boundaries {
         boundary.unresolved = matches!(
             &boundary.endpoint,
             DiagramEndpoint::Boundary { symbol: None, .. }
         );
         if boundary.unresolved {
-            // Keep the label explicit without changing the endpoint identity.
             boundary.label = boundary.label.replacen("boundary:", "unresolved:", 1);
         }
     }
-    max_right = max_right.max(
-        boundaries
-            .iter()
-            .map(|boundary| boundary.x + boundary.width)
-            .fold(0.0_f64, f64::max),
-    );
+}
 
-    let boundary_index: BTreeMap<DiagramEndpoint, usize> = boundaries
-        .iter()
-        .enumerate()
-        .map(|(index, boundary)| (boundary.endpoint.clone(), index))
-        .collect();
-
+fn layout_edges(
+    projection: &DiagramProjection,
+    nodes: &[LayoutNode],
+    node_index: &BTreeMap<SymbolId, usize>,
+    node_boxes: &[LayoutRect],
+    boundaries: &[LayoutBoundary],
+    boundary_index: &BTreeMap<DiagramEndpoint, usize>,
+    max_right: &mut f64,
+) -> Vec<LayoutEdge> {
     let mut edges = Vec::new();
     for edge in &projection.edges {
-        let Some(source) = edge_endpoint(
-            &edge.source,
-            &nodes,
-            &node_index,
-            &node_boxes,
-            &boundaries,
-            &boundary_index,
-        ) else {
-            continue;
-        };
-        let Some(mut target) = edge_endpoint(
-            &edge.target,
-            &nodes,
-            &node_index,
-            &node_boxes,
-            &boundaries,
-            &boundary_index,
-        ) else {
-            continue;
-        };
-        let mut source = source;
-        let self_edge = !source.boundary && !target.boundary && source.endpoint == target.endpoint;
-        let (source_anchor, target_anchor, points) = route_edge(&source, &target, self_edge);
-        source.anchor = source_anchor;
-        target.anchor = target_anchor;
-        let (stroke, dash, marker_id) = edge_style(edge);
-        let boundary = source.boundary || target.boundary;
-        let state = if edge.resolution == ResolutionStatus::Unresolved {
-            "unresolved"
-        } else if boundary {
-            "boundary"
-        } else {
-            ""
-        };
-        let label = if state.is_empty() {
-            edge.kind.to_string()
-        } else {
-            format!("{} ({state})", edge.kind)
-        };
-        edges.push(LayoutEdge {
-            source,
-            target,
-            kind: edge.kind,
-            resolution: edge.resolution,
-            label,
-            points,
-            stroke: stroke.to_owned(),
-            dash: dash.map(ToOwned::to_owned),
-            marker_id: marker_id.to_owned(),
-        });
-        if let Some(last) = edges.last() {
-            max_right = max_right
-                .max(last.label_position().0 + estimate_text_width(&last.label, 9.0) / 2.0);
+        if let Some(edge) = layout_edge(
+            edge,
+            nodes,
+            node_index,
+            node_boxes,
+            boundaries,
+            boundary_index,
+        ) {
+            *max_right = max_right
+                .max(edge.label_position().0 + estimate_text_width(&edge.label, 9.0) / 2.0);
+            edges.push(edge);
         }
     }
+    edges
+}
 
+fn layout_edge(
+    edge: &DiagramEdge,
+    nodes: &[LayoutNode],
+    node_index: &BTreeMap<SymbolId, usize>,
+    node_boxes: &[LayoutRect],
+    boundaries: &[LayoutBoundary],
+    boundary_index: &BTreeMap<DiagramEndpoint, usize>,
+) -> Option<LayoutEdge> {
+    let mut source = edge_endpoint(
+        &edge.source,
+        nodes,
+        node_index,
+        node_boxes,
+        boundaries,
+        boundary_index,
+    )?;
+    let mut target = edge_endpoint(
+        &edge.target,
+        nodes,
+        node_index,
+        node_boxes,
+        boundaries,
+        boundary_index,
+    )?;
+    let self_edge = !source.boundary && !target.boundary && source.endpoint == target.endpoint;
+    let (source_anchor, target_anchor, points) = route_edge(&source, &target, self_edge);
+    source.anchor = source_anchor;
+    target.anchor = target_anchor;
+    let (stroke, dash, marker_id) = edge_style(edge);
+    let state = edge_state(edge, source.boundary || target.boundary);
+    let label = if state.is_empty() {
+        edge.kind.to_string()
+    } else {
+        format!("{} ({state})", edge.kind)
+    };
+    Some(LayoutEdge {
+        source,
+        target,
+        kind: edge.kind,
+        resolution: edge.resolution,
+        label,
+        points,
+        stroke: stroke.to_owned(),
+        dash: dash.map(ToOwned::to_owned),
+        marker_id: marker_id.to_owned(),
+    })
+}
+
+fn edge_state(edge: &DiagramEdge, boundary: bool) -> &'static str {
+    if edge.resolution == ResolutionStatus::Unresolved {
+        "unresolved"
+    } else if boundary {
+        "boundary"
+    } else {
+        ""
+    }
+}
+
+fn layout_legend_and_size(
+    options: &SvgOptions,
+    max_canvas_width: f64,
+    max_right: f64,
+    cursor_y: f64,
+) -> (LayoutLegend, f64, f64) {
     let legend_lines = vec![
         "Edge labels show relationship kind and direction.".to_owned(),
         "Solid: structural references; dashed: methods, traits, aliases, boundaries.".to_owned(),
         "Red dashed edges indicate unresolved targets.".to_owned(),
         "Arrowheads point from source to target.".to_owned(),
     ];
-    let legend_width = legend_lines
+    let legend_width = (legend_lines
         .iter()
         .map(|line| estimate_text_width(line, 10.0))
         .fold(320.0_f64, f64::max)
-        + NODE_PADDING * 2.0;
-    let legend_width = legend_width.min(max_canvas_width - MARGIN * 2.0);
+        + NODE_PADDING * 2.0)
+        .min(max_canvas_width - MARGIN * 2.0);
     let legend_height = NODE_PADDING * 2.0 + 18.0 + legend_lines.len() as f64 * LEGEND_LINE_HEIGHT;
-    cursor_y += 24.0;
     let legend = LayoutLegend {
         x: MARGIN,
-        y: cursor_y,
+        y: cursor_y + 24.0,
         width: legend_width,
         height: legend_height,
         lines: legend_lines,
     };
-    cursor_y += legend_height + MARGIN;
+    let width = layout_width(options, max_right, &legend);
+    let height = (legend.y + legend.height + MARGIN).max(TITLE_HEIGHT + 40.0);
+    (legend, width, height)
+}
 
+fn layout_width(options: &SvgOptions, max_right: f64, legend: &LayoutLegend) -> f64 {
     let title_width = estimate_text_width(&options.title, 20.0);
     let subtitle_width = options
         .subtitle
         .as_ref()
         .map(|subtitle| estimate_text_width(subtitle, 12.0))
         .unwrap_or(0.0);
-    let width = max_right
+    max_right
         .max(MARGIN * 2.0 + title_width.max(subtitle_width))
         .max(640.0)
-        .max(legend.x + legend.width + MARGIN);
-    let empty_message = if projection.nodes.is_empty() {
-        Some("No types in the selected scope.".to_owned())
-    } else {
-        None
-    };
-    let height = cursor_y.max(TITLE_HEIGHT + 40.0);
-
-    DiagramLayout {
-        title: options.title.clone(),
-        subtitle: options.subtitle.clone(),
-        width,
-        height,
-        nodes,
-        boundaries,
-        edges,
-        legend,
-        empty_message,
-    }
+        .max(legend.x + legend.width + MARGIN)
 }
 
 impl LayoutEdge {
@@ -587,127 +680,123 @@ fn route_edge(
     target: &LayoutEdgeEndpoint,
     self_edge: bool,
 ) -> (LayoutPoint, LayoutPoint, Vec<LayoutPoint>) {
+    if self_edge {
+        return route_self_edge(source);
+    }
     let source_rect = LayoutRect::new(source.x, source.y, source.width, source.height);
     let target_rect = LayoutRect::new(target.x, target.y, target.width, target.height);
-    if self_edge {
-        let start = LayoutPoint {
-            x: source_rect.right(),
-            y: source_rect.y + 14.0,
-        };
-        let end = LayoutPoint {
-            x: source_rect.right(),
-            y: source_rect.bottom() - 14.0,
-        };
-        let loop_x = source_rect.right() + 34.0;
-        return (
-            start,
-            end,
-            vec![
-                start,
-                LayoutPoint {
-                    x: loop_x,
-                    y: start.y,
-                },
-                LayoutPoint {
-                    x: loop_x,
-                    y: end.y,
-                },
-                end,
-            ],
-        );
-    }
-
-    let source_center = source_rect.center();
-    let target_center = target_rect.center();
     let vertical_gap =
         target_rect.y >= source_rect.bottom() || source_rect.y >= target_rect.bottom();
     let horizontal_gap =
         target_rect.x >= source_rect.right() || source_rect.x >= target_rect.right();
-    let use_vertical = if vertical_gap {
-        true
-    } else if horizontal_gap {
-        false
+    let vertical = vertical_gap
+        || (!horizontal_gap
+            && (target_rect.center().y - source_rect.center().y).abs()
+                >= (target_rect.center().x - source_rect.center().x).abs());
+    if vertical {
+        route_vertical(source_rect, target_rect)
     } else {
-        (target_center.y - source_center.y).abs() >= (target_center.x - source_center.x).abs()
-    };
-
-    if use_vertical {
-        let below = target_center.y >= source_center.y;
-        let start = LayoutPoint {
-            x: source_center.x,
-            y: if below {
-                source_rect.bottom()
-            } else {
-                source_rect.y
-            },
-        };
-        let end = LayoutPoint {
-            x: target_center.x,
-            y: if below {
-                target_rect.y
-            } else {
-                target_rect.bottom()
-            },
-        };
-        if (start.x - end.x).abs() < 0.01 {
-            return (start, end, vec![start, end]);
-        }
-        let middle = (start.y + end.y) / 2.0;
-        (
-            start,
-            end,
-            vec![
-                start,
-                LayoutPoint {
-                    x: start.x,
-                    y: middle,
-                },
-                LayoutPoint {
-                    x: end.x,
-                    y: middle,
-                },
-                end,
-            ],
-        )
-    } else {
-        let right = target_center.x >= source_center.x;
-        let start = LayoutPoint {
-            x: if right {
-                source_rect.right()
-            } else {
-                source_rect.x
-            },
-            y: source_center.y,
-        };
-        let end = LayoutPoint {
-            x: if right {
-                target_rect.x
-            } else {
-                target_rect.right()
-            },
-            y: target_center.y,
-        };
-        if (start.y - end.y).abs() < 0.01 {
-            return (start, end, vec![start, end]);
-        }
-        let middle = (start.x + end.x) / 2.0;
-        (
-            start,
-            end,
-            vec![
-                start,
-                LayoutPoint {
-                    x: middle,
-                    y: start.y,
-                },
-                LayoutPoint {
-                    x: middle,
-                    y: end.y,
-                },
-                end,
-            ],
-        )
+        route_horizontal(source_rect, target_rect)
     }
+}
+
+fn route_self_edge(source: &LayoutEdgeEndpoint) -> (LayoutPoint, LayoutPoint, Vec<LayoutPoint>) {
+    let rect = LayoutRect::new(source.x, source.y, source.width, source.height);
+    let start = LayoutPoint {
+        x: rect.right(),
+        y: rect.y + 14.0,
+    };
+    let end = LayoutPoint {
+        x: rect.right(),
+        y: rect.bottom() - 14.0,
+    };
+    let loop_x = rect.right() + 34.0;
+    (
+        start,
+        end,
+        vec![
+            start,
+            LayoutPoint {
+                x: loop_x,
+                y: start.y,
+            },
+            LayoutPoint {
+                x: loop_x,
+                y: end.y,
+            },
+            end,
+        ],
+    )
+}
+
+fn route_vertical(
+    source: LayoutRect,
+    target: LayoutRect,
+) -> (LayoutPoint, LayoutPoint, Vec<LayoutPoint>) {
+    let below = target.center().y >= source.center().y;
+    let start = LayoutPoint {
+        x: source.center().x,
+        y: if below { source.bottom() } else { source.y },
+    };
+    let end = LayoutPoint {
+        x: target.center().x,
+        y: if below { target.y } else { target.bottom() },
+    };
+    if (start.x - end.x).abs() < 0.01 {
+        return (start, end, vec![start, end]);
+    }
+    let middle = (start.y + end.y) / 2.0;
+    (
+        start,
+        end,
+        vec![
+            start,
+            LayoutPoint {
+                x: start.x,
+                y: middle,
+            },
+            LayoutPoint {
+                x: end.x,
+                y: middle,
+            },
+            end,
+        ],
+    )
+}
+
+fn route_horizontal(
+    source: LayoutRect,
+    target: LayoutRect,
+) -> (LayoutPoint, LayoutPoint, Vec<LayoutPoint>) {
+    let right = target.center().x >= source.center().x;
+    let start = LayoutPoint {
+        x: if right { source.right() } else { source.x },
+        y: source.center().y,
+    };
+    let end = LayoutPoint {
+        x: if right { target.x } else { target.right() },
+        y: target.center().y,
+    };
+    if (start.y - end.y).abs() < 0.01 {
+        return (start, end, vec![start, end]);
+    }
+    let middle = (start.x + end.x) / 2.0;
+    (
+        start,
+        end,
+        vec![
+            start,
+            LayoutPoint {
+                x: middle,
+                y: start.y,
+            },
+            LayoutPoint {
+                x: middle,
+                y: end.y,
+            },
+            end,
+        ],
+    )
 }
 
 fn label_point(points: &[LayoutPoint]) -> LayoutPoint {

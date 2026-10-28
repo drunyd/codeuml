@@ -21,69 +21,124 @@ pub fn analyze_project(project: &ProjectPath) -> Result<Codebase, AnalysisError>
         .unwrap_or("project");
     let mut codebase = Codebase::new(project_name);
 
+    add_discovered_files(&mut codebase, &discovered);
+    let had_discovery_problems = add_discovery_diagnostics(&mut codebase, &discovered);
+    let package_analyses = analyze_packages(&discovered);
+    let (files_analyzed, files_failed, model_errors) =
+        merge_package_analyses(&mut codebase, &package_analyses);
+    let references = collect_references(&package_analyses);
+    resolve_references(&mut codebase, &references);
+    add_model_error_diagnostics(&mut codebase, &model_errors);
+    set_analysis_metadata(
+        &mut codebase,
+        files_analyzed,
+        files_failed,
+        had_discovery_problems,
+        &model_errors,
+    );
+    Ok(codebase)
+}
+
+fn add_discovered_files(codebase: &mut Codebase, discovered: &crate::DiscoveredProject) {
     for file in discovered.source_files() {
         codebase.add_file(SourceFile::new(file, Language::Rust));
     }
+}
 
-    let discovery_diagnostics = discovered.diagnostics().to_vec();
-    let had_discovery_problems = !discovery_diagnostics.is_empty();
-    for diagnostic in discovery_diagnostics {
-        codebase.add_diagnostic(diagnostic);
+fn add_discovery_diagnostics(
+    codebase: &mut Codebase,
+    discovered: &crate::DiscoveredProject,
+) -> bool {
+    let diagnostics = discovered.diagnostics();
+    for diagnostic in diagnostics {
+        codebase.add_diagnostic(diagnostic.clone());
     }
+    !diagnostics.is_empty()
+}
 
-    let packages: Vec<RustPackageSources> = discovered
+fn analyze_packages(discovered: &crate::DiscoveredProject) -> Vec<RustAnalysis> {
+    discovered
         .packages()
         .iter()
         .map(rust_package_sources)
-        .collect();
-    let package_analyses: Vec<RustAnalysis> = packages
-        .iter()
-        .map(|package| analyze_package(discovered.root(), package))
-        .collect();
+        .map(|package| analyze_package(discovered.root(), &package))
+        .collect()
+}
 
-    let mut model_errors = Vec::new();
+fn merge_package_analyses(
+    codebase: &mut Codebase,
+    analyses: &[RustAnalysis],
+) -> (usize, usize, Vec<String>) {
     let mut files_analyzed = 0;
     let mut files_failed = 0;
-
-    for analysis in &package_analyses {
+    let mut model_errors = Vec::new();
+    for analysis in analyses {
         files_analyzed += analysis.files_analyzed;
         files_failed += analysis.files_failed;
-        for diagnostic in &analysis.diagnostics {
-            codebase.add_diagnostic(diagnostic.clone());
-        }
+        add_package_diagnostics(codebase, analysis);
+        add_package_modules(codebase, analysis, &mut model_errors);
+        add_package_types(codebase, analysis, &mut model_errors);
+    }
+    (files_analyzed, files_failed, model_errors)
+}
 
-        for module in &analysis.modules {
-            if let Err(error) = codebase.add_module(module.clone()) {
-                model_errors.push(format!("could not add module: {error}"));
-            }
-        }
-        for declaration in &analysis.types {
-            if let Err(error) = codebase.add_type(declaration.clone()) {
-                model_errors.push(format!("could not add type declaration: {error}"));
-            }
+fn add_package_diagnostics(codebase: &mut Codebase, analysis: &RustAnalysis) {
+    for diagnostic in &analysis.diagnostics {
+        codebase.add_diagnostic(diagnostic.clone());
+    }
+}
+
+fn add_package_modules(
+    codebase: &mut Codebase,
+    analysis: &RustAnalysis,
+    model_errors: &mut Vec<String>,
+) {
+    for module in &analysis.modules {
+        if let Err(error) = codebase.add_module(module.clone()) {
+            model_errors.push(format!("could not add module: {error}"));
         }
     }
+}
 
-    let references: Vec<RustReference> = package_analyses
+fn add_package_types(
+    codebase: &mut Codebase,
+    analysis: &RustAnalysis,
+    model_errors: &mut Vec<String>,
+) {
+    for declaration in &analysis.types {
+        if let Err(error) = codebase.add_type(declaration.clone()) {
+            model_errors.push(format!("could not add type declaration: {error}"));
+        }
+    }
+}
+
+fn collect_references(analyses: &[RustAnalysis]) -> Vec<RustReference> {
+    analyses
         .iter()
         .flat_map(|analysis| analysis.references.iter().cloned())
-        .collect();
-    resolve_references(&mut codebase, &references);
+        .collect()
+}
 
-    for message in &model_errors {
+fn add_model_error_diagnostics(codebase: &mut Codebase, model_errors: &[String]) {
+    for message in model_errors {
         codebase.add_diagnostic(
             Diagnostic::error(message.clone(), None).with_code("analysis::model-invariant"),
         );
     }
+}
 
-    let analysis_metadata = codebase.analysis_mut();
-    analysis_metadata.mode = AnalysisMode::SyntaxOnly;
-    analysis_metadata.files_analyzed = files_analyzed;
-    analysis_metadata.files_failed = files_failed;
-    analysis_metadata.partial =
-        files_failed > 0 || had_discovery_problems || !model_errors.is_empty();
-
-    Ok(codebase)
+fn set_analysis_metadata(
+    codebase: &mut Codebase,
+    files_analyzed: usize,
+    files_failed: usize,
+    had_discovery_problems: bool,
+    model_errors: &[String],
+) {
+    let metadata = codebase.analysis_mut();
+    metadata.mode = AnalysisMode::SyntaxOnly;
+    metadata.files_analyzed = files_analyzed;
+    metadata.files_failed = files_failed;
+    metadata.partial = files_failed > 0 || had_discovery_problems || !model_errors.is_empty();
 }
 
 fn rust_package_sources(package: &DiscoveredPackage) -> RustPackageSources {

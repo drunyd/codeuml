@@ -164,15 +164,53 @@ The browser is a functional keyboard UI, not a graphical desktop application:
 | `Esc` (search) | Cancel search and restore the previous query/selection |
 | `Esc` | Clear an active search or close the current view |
 | `s` | Open scope dialog |
+| `a` | Open the hierarchical module architecture browser |
 | `d` | Open diagnostics |
 | `Ctrl+U`/`Ctrl+D` | Scroll type details |
 | `v` | Open the terminal UML diagram view |
+| `o` | Show source for the selected type, module, or relationship evidence |
+| `Backspace` | Go back after following a relationship |
 | `?` | Show keyboard help overlay |
 | `q` | Quit from the type browser |
 | `Ctrl+C` | Quit from any view |
 
 During search, ordinary characters—including `q`, `s`, `j`, and `?`—are treated
 as text. `Ctrl+C` still quits.
+
+### Module architecture browser
+
+Press `a` from the type browser to navigate the analyzed module hierarchy in
+three ranger-style panes:
+
+- **Left** — the parent level, with the current module highlighted
+  (`Project root` at the top).
+- **Middle** — the current level; move with `j`/`k` or the arrow keys. Modules
+  are shown as `name/`, types as `Name  [kind]`.
+- **Right** — a live preview of the selected item: a module's children, or a
+  type's full details.
+
+`l`, `Right`, or `Enter` opens the selected module (or opens a type in the type
+browser, scoped to its module). `h` or `Left` goes up a level, and stays put
+at the project root. `Esc`/`b` goes up a level and, from the root, returns to
+the type browser. `o` shows the selected item's source. On terminals narrower
+than 90 columns the parent pane is hidden.
+
+### Source view and back navigation
+
+Press `o` to open a scrollable, line-numbered source view with the declaration
+or evidence span highlighted. In the type list it shows the selected type; with
+focus on the relationships panel it shows the selected relationship's first
+evidence location; in the architecture browser and diagram view it shows the
+selected module/type. Scroll with `Up`/`Down`, `PageUp`/`PageDown`, and
+`Home`/`End`; `Esc`, `b`, or `o` returns to where you were.
+
+Source paths come from analysis, so they are only read when they are
+project-relative, resolve inside the project root (including through
+symlinks), and are regular files under 2 MiB. Nothing is ever written.
+
+Following a relationship records where you came from. `Backspace` returns to
+the previous type and scope (up to 100 steps); the header shows the depth.
+Type details also list each field, variant, and method with its source line.
 
 ### Terminal UML diagram view
 

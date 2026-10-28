@@ -7,7 +7,8 @@ use thiserror::Error;
 
 use crate::model::{DiagramMember, DiagramMemberKind};
 use crate::{
-    DiagramEdge, DiagramEndpoint, DiagramNode, DiagramProjection, DiagramScope, ProjectionMetadata,
+    DiagramEdge, DiagramEndpoint, DiagramNode, DiagramProjection, DiagramScope,
+    NeighborhoodDirection, ProjectionMetadata,
 };
 
 /// Project the analyzed model into diagram-ready nodes and edges.
@@ -79,72 +80,105 @@ fn select_relationships<'a>(
     scope: &DiagramScope,
 ) -> Result<Vec<&'a Relationship>, ProjectionError> {
     match scope {
-        DiagramScope::Project => {
-            builder.selected = builder.type_by_id.keys().cloned().collect();
-            Ok(builder
-                .codebase
-                .relationships()
-                .iter()
-                .filter(|relationship| builder.included_source(relationship).is_some())
-                .collect())
-        }
-        DiagramScope::Module { module } => {
-            if builder.codebase.module(module).is_none() {
-                return Err(ProjectionError::ModuleNotFound(module.clone()));
-            }
-            builder.selected = builder
-                .type_by_id
-                .values()
-                .filter(|declaration| declaration.module.as_ref() == Some(module))
-                .map(|declaration| declaration.id.clone())
-                .collect();
-
-            Ok(builder
-                .codebase
-                .relationships()
-                .iter()
-                .filter(|relationship| {
-                    let source = builder.included_source(relationship);
-                    let target = builder.target_owner(relationship);
-                    source.is_some_and(|source| builder.selected.contains(source))
-                        || target.is_some_and(|target| builder.selected.contains(target))
-                })
-                .collect())
-        }
+        DiagramScope::Project => select_project_relationships(builder),
+        DiagramScope::Module { module } => select_module_relationships(builder, module),
         DiagramScope::TypeNeighborhood { type_id, direction } => {
-            if !builder.type_by_id.contains_key(type_id) {
-                return Err(ProjectionError::TypeNotFound(type_id.clone()));
-            }
-            builder.selected.insert(type_id.clone());
+            select_neighborhood_relationships(builder, type_id, *direction)
+        }
+    }
+}
 
-            let mut selected_relationships = Vec::new();
-            for relationship in builder.codebase.relationships() {
-                let source = builder.included_source(relationship).cloned();
-                let target = builder.target_owner(relationship).cloned();
-                let outgoing = direction.includes_outgoing()
-                    && source.as_ref().is_some_and(|source| source == type_id);
-                let incoming = direction.includes_incoming()
-                    && target.as_ref().is_some_and(|target| target == type_id);
-                if !outgoing && !incoming {
-                    continue;
-                }
-                selected_relationships.push(relationship);
-                if outgoing {
-                    if let Some(target) = target {
-                        if builder.type_by_id.contains_key(&target) {
-                            builder.selected.insert(target);
-                        }
-                    }
-                }
-                if incoming {
-                    if let Some(source) = source {
-                        if builder.type_by_id.contains_key(&source) {
-                            builder.selected.insert(source);
-                        }
-                    }
-                }
-            }
-            Ok(selected_relationships)
+fn select_project_relationships<'a>(
+    builder: &mut ProjectionBuilder<'a>,
+) -> Result<Vec<&'a Relationship>, ProjectionError> {
+    builder.selected = builder.type_by_id.keys().cloned().collect();
+    Ok(builder
+        .codebase
+        .relationships()
+        .iter()
+        .filter(|relationship| builder.included_source(relationship).is_some())
+        .collect())
+}
+
+fn select_module_relationships<'a>(
+    builder: &mut ProjectionBuilder<'a>,
+    module: &SymbolId,
+) -> Result<Vec<&'a Relationship>, ProjectionError> {
+    if builder.codebase.module(module).is_none() {
+        return Err(ProjectionError::ModuleNotFound(module.clone()));
+    }
+    builder.selected = builder
+        .type_by_id
+        .values()
+        .filter(|declaration| declaration.module.as_ref() == Some(module))
+        .map(|declaration| declaration.id.clone())
+        .collect();
+    Ok(builder
+        .codebase
+        .relationships()
+        .iter()
+        .filter(|relationship| touches_selected_module(builder, relationship))
+        .collect())
+}
+
+fn touches_selected_module(builder: &ProjectionBuilder<'_>, relationship: &Relationship) -> bool {
+    let source = builder.included_source(relationship);
+    let target = builder.target_owner(relationship);
+    source.is_some_and(|source| builder.selected.contains(source))
+        || target.is_some_and(|target| builder.selected.contains(target))
+}
+
+fn select_neighborhood_relationships<'a>(
+    builder: &mut ProjectionBuilder<'a>,
+    type_id: &SymbolId,
+    direction: NeighborhoodDirection,
+) -> Result<Vec<&'a Relationship>, ProjectionError> {
+    if !builder.type_by_id.contains_key(type_id) {
+        return Err(ProjectionError::TypeNotFound(type_id.clone()));
+    }
+    builder.selected.insert(type_id.clone());
+    let mut selected = Vec::new();
+    for relationship in builder.codebase.relationships() {
+        if neighborhood_matches(builder, relationship, type_id, direction) {
+            select_neighbor_nodes(builder, relationship, type_id, direction);
+            selected.push(relationship);
+        }
+    }
+    Ok(selected)
+}
+
+fn neighborhood_matches(
+    builder: &ProjectionBuilder<'_>,
+    relationship: &Relationship,
+    type_id: &SymbolId,
+    direction: NeighborhoodDirection,
+) -> bool {
+    let source = builder.included_source(relationship);
+    let target = builder.target_owner(relationship);
+    direction.includes_outgoing() && source.is_some_and(|source| source == type_id)
+        || direction.includes_incoming() && target.is_some_and(|target| target == type_id)
+}
+
+fn select_neighbor_nodes(
+    builder: &mut ProjectionBuilder<'_>,
+    relationship: &Relationship,
+    type_id: &SymbolId,
+    direction: NeighborhoodDirection,
+) {
+    let source = builder.included_source(relationship).cloned();
+    let target = builder.target_owner(relationship).cloned();
+    if direction.includes_outgoing() && source.as_ref().is_some_and(|source| source == type_id) {
+        add_neighbor(builder, target.clone());
+    }
+    if direction.includes_incoming() && target.as_ref().is_some_and(|target| target == type_id) {
+        add_neighbor(builder, source);
+    }
+}
+
+fn add_neighbor(builder: &mut ProjectionBuilder<'_>, neighbor: Option<SymbolId>) {
+    if let Some(neighbor) = neighbor {
+        if builder.type_by_id.contains_key(&neighbor) {
+            builder.selected.insert(neighbor);
         }
     }
 }

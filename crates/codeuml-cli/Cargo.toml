@@ -17,6 +17,8 @@ clap.workspace = true
 codeuml-analysis = { path = "../codeuml-analysis" }
 codeuml-core = { version = "0.1.0", path = "../codeuml-core" }
 codeuml-diagram = { version = "0.1.0", path = "../codeuml-diagram" }
+codeuml-lang-python = { version = "0.1.0", path = "../codeuml-lang-python" }
+codeuml-lang-rust = { version = "0.1.0", path = "../codeuml-lang-rust" }
 codeuml-metrics = { version = "0.1.0", path = "../codeuml-metrics" }
 codeuml-tui = { version = "0.1.0", path = "../codeuml-tui" }
 thiserror.workspace = true

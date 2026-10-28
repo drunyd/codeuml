@@ -2,8 +2,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use codeuml_analysis::{analyze_project, AnalysisError, ProjectPath};
+use codeuml_analysis::{analyze_project, AnalysisError, LanguageProvider, ProjectPath};
 use codeuml_core::{AnalysisMode, Codebase, ResolutionStatus};
+use codeuml_lang_rust::RustProvider;
+
+fn rust_providers() -> Vec<Box<dyn LanguageProvider>> {
+    vec![Box::new(RustProvider)]
+}
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -36,7 +41,7 @@ impl TempProject {
 
     fn analyze(&self) -> Codebase {
         let project = ProjectPath::resolve(Some(&self.path)).expect("resolve project");
-        analyze_project(&project).expect("analyze project")
+        analyze_project(&project, &rust_providers()).expect("analyze project")
     }
 }
 
@@ -176,14 +181,29 @@ fn malformed_files_produce_diagnostics_without_losing_valid_declarations() {
 }
 
 #[test]
-fn missing_manifest_is_reported_as_an_analysis_error() {
+fn projects_no_provider_recognises_fail_with_what_was_expected() {
     let project = TempProject::new("no-manifest");
     let project_path = ProjectPath::resolve(Some(project.path())).expect("resolve project");
 
-    let error = analyze_project(&project_path).expect_err("missing manifest fails");
+    let error = analyze_project(&project_path, &rust_providers()).expect_err("no project");
+    assert!(matches!(error, AnalysisError::NoSupportedProject { .. }));
+    let message = error.to_string();
+    assert!(message.contains("no supported project"), "{message}");
+    assert!(message.contains("Rust (Cargo.toml)"), "{message}");
 
-    assert!(matches!(
-        error,
-        AnalysisError::Discovery(codeuml_analysis::DiscoveryError::ManifestMissing(_))
-    ));
+    let error = analyze_project(&project_path, &[]).expect_err("no languages");
+    assert!(error.to_string().contains("no languages are enabled"));
+}
+
+#[test]
+fn an_unusable_manifest_is_a_provider_error() {
+    let project = TempProject::new("bad-manifest");
+    project.write("Cargo.toml", "this is not toml [");
+    let project_path = ProjectPath::resolve(Some(project.path())).expect("resolve project");
+
+    let error = analyze_project(&project_path, &rust_providers()).expect_err("bad manifest");
+    assert!(
+        matches!(&error, AnalysisError::Provider(provider) if provider.provider() == "rust"),
+        "{error}"
+    );
 }

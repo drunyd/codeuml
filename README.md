@@ -1,36 +1,74 @@
 # CodeUML
 
-CodeUML is a cross-platform command-line tool for analyzing Rust source
-structure and exploring it through an interactive terminal browser or exporting
-a standalone SVG diagram. It discovers Cargo projects, extracts declarations and
-references without requiring a successful build, resolves references
+CodeUML is a cross-platform command-line tool for analyzing source structure
+(Rust and Python) and exploring it through an interactive terminal browser or
+exporting a standalone SVG diagram. It discovers projects, extracts declarations
+and references without requiring a build or an interpreter, resolves references
 conservatively, and projects a deterministic graph.
 
 > **Status: Milestone 6.** Discovery, syntax analysis, conservative reference
 > resolution, diagram projection, the Ratatui/Crossterm browser, an interactive
-> terminal UML view, and SVG export are implemented. Python support, persistence,
-> and compiler/semantic integration are not implemented.
+> terminal UML view, and SVG export are implemented for Rust and Python.
+> Persistence and compiler/semantic integration are not implemented.
 
 ## Workspace
 
 | Crate | Responsibility |
 | --- | --- |
-| `codeuml-cli` | Executable, argument parsing, mode selection, composition |
+| `codeuml-cli` | Executable, argument parsing, mode selection, composition and language registration |
 | `codeuml-core` | Language-neutral model, stable IDs, relationships, diagnostics |
-| `codeuml-analysis` | Cargo discovery, orchestration, reference resolution, validation |
-| `codeuml-lang-rust` | `syn`-based Rust declarations, modules, and reference extraction |
+| `codeuml-lang` | The `LanguageProvider` contract, project root validation |
+| `codeuml-analysis` | Language-neutral orchestration: detect providers, run them into one model |
+| `codeuml-lang-rust` | Rust provider: Cargo discovery, `syn` extraction, reference resolution |
+| `codeuml-lang-python` | Python provider: source discovery, tree-sitter extraction, import-based resolution |
 | `codeuml-metrics` | CRAP report and `codeuml.toml` reader, score lookup and bands |
 | `codeuml-diagram` | Deterministic projection, layered layout, and standalone SVG rendering |
 | `codeuml-tui` | Ratatui/Crossterm browser, terminal UML layout/canvas, input, lifecycle |
 
-Dependencies point one way: language and diagram crates consume the core
-model; the TUI consumes the core model and diagram projection. The core crate
-does not depend on any parser, renderer, or UI.
+Dependencies point one way: language providers and the diagram crate consume
+the core model; the TUI consumes the core model and diagram projection. The
+core crate does not depend on any parser, renderer, or UI, and nothing outside a
+provider crate knows which language it analyzes.
+
+### Language support
+
+Each language is a `LanguageProvider` (in `codeuml-lang`) implemented by its own
+crate. A provider says how to recognise a project (`detect`) and how to fill
+the shared `Codebase` (`analyze`): files, modules, types, relationships,
+diagnostics. `codeuml-analysis` runs every provider that recognises the
+project into one model, so a repository mixing languages is analyzed together.
+If several providers match and one fails outright, the failure becomes an error
+diagnostic (`analysis::provider-failed`) and the model is marked partial; the
+run only fails when no provider succeeds. A directory no provider recognises
+fails with the list of what was looked for.
+
+Currently supported: **Rust** (`codeuml-lang-rust`, detected by `Cargo.toml`) and
+**Python** (`codeuml-lang-python`, detected by `pyproject.toml`, `setup.py`,
+`setup.cfg`, `requirements.txt`, or `Pipfile` at the project root, or by `.py`
+files directly in the root or in `src/`). A repository that matches several
+languages (for example a Rust crate with Python bindings) is analyzed into one
+model.
+
+To add a language:
+
+1. Create a `codeuml-lang-<name>` crate depending on `codeuml-core` and
+   `codeuml-lang`, and implement `LanguageProvider` (`id`, `detection_hint`,
+   `detect`, `analyze`). `detect` must be a cheap file check; do all parsing in
+   `analyze`. Use project-relative paths in locations and in declaration IDs
+   (`SymbolId::declaration(file, name)`), which keeps providers from colliding.
+2. Report per-file failures through `ProviderReport` and as diagnostics rather
+   than returning an error; return `ProviderError` only when the project cannot
+   be analyzed at all.
+3. Register it in `default_providers()` in `codeuml-cli`.
+
+No change is needed in the core, diagram, or TUI crates.
 
 ## Requirements
 
-- Rust 1.85 or newer
-- Cargo on `PATH` (discovery invokes `cargo metadata --no-deps`)
+- Rust 1.85 or newer, and a C compiler (tree-sitter's Python grammar is built
+  from C source)
+- Cargo on `PATH` to analyze Rust projects (discovery invokes
+  `cargo metadata --no-deps`); Python projects need no Python installation
 - An interactive terminal for the browser
 - No network access or successful compilation is required
 
@@ -44,7 +82,9 @@ cargo run -p codeuml-cli -- --version
 ```
 
 Without a path, CodeUML analyzes the current working directory. The project
-must contain a `Cargo.toml`.
+must be one a language provider recognises (a `Cargo.toml` for Rust; a Python
+packaging marker or Python files for Python). Otherwise CodeUML exits with an
+error listing what it looked for.
 
 - If both stdin and stdout are terminals, no explicit export options are present,
   and `--format` is omitted, CodeUML opens the interactive browser.
@@ -246,7 +286,9 @@ on the same line as its name, right-aligned and colour-coded:
   a missing configured report, or an unreadable report is reported as a warning
   in the diagnostics view (`d`) and CodeUML falls back to the defaults.
 - Report namespaces use underscores (`codeuml_tui::app::App`) and are matched to
-  package names with hyphens (`codeuml-tui`). Functions outside any shown type or
+  package names with hyphens (`codeuml-tui`). Python reports use dotted names
+  (`pkg.module.Class`), which are matched to Python modules and classes the same
+  way. Functions outside any shown type or
   module, such as free functions in a binary's `main.rs`, are not displayed.
 
 ### Terminal UML diagram view
@@ -363,6 +405,44 @@ structured diagnostic while declarations from other files remain available.
 Discovery excludes `target`, `.git`, and nested `vendor` directories, and does
 not follow symbolic links. Runs do not execute project code or compile it.
 
+### Python
+
+- Every `.py` file below the project root, except virtual environments
+  (directories with `pyvenv.cfg`, or named `venv`/`env`), hidden directories,
+  `__pycache__`, `site-packages`, `node_modules`, `build`, `dist`, `*.egg-info`,
+  and test code (`tests/`, `test/`, `test_*.py`, `*_test.py`, `conftest.py`).
+  Symbolic links are not followed.
+- Modules are named from the directory layout: `pkg/sub/mod.py` is
+  `pkg.sub.mod`, and `__init__.py` is the package itself. A `src/` directory
+  that holds Python is a source root (`src/pkg/mod.py` is `pkg.mod`). Packages
+  and modules form the module hierarchy shown by the architecture browser; a
+  directory without `__init__.py` is still shown as a package.
+- Classes become types: `class` is a class; a class deriving from `Protocol` or
+  `ABC` (or using `metaclass=ABCMeta`) is an interface; deriving from `Enum`,
+  `IntEnum`, `StrEnum`, `Flag`, or `IntFlag` makes an enum whose members are the
+  variants. Nested classes are qualified by their outer class
+  (`pkg.mod.Outer.Inner`); classes inside functions are skipped.
+- Fields are annotated or plain class attributes plus `self.x` assignments in
+  `__init__` (typed from the annotation, or from the matching parameter's
+  annotation for `self.x = x`). Methods keep their parameters (without
+  `self`/`cls`) and return annotation; `@staticmethod`/`@classmethod` are
+  static. Names starting with one underscore are private.
+- Relationships: base classes (`extends`, or `implements` when the base is an
+  interface) and the names in field, parameter, and return annotations. Quoted
+  forward references, `Optional`/`Union`/`X | None`, `List[...]` and friends,
+  and `Annotated[X, ...]` are read; `Literal[...]` values are not types.
+- Names are resolved through the file's imports, including relative imports,
+  aliases, `__init__` re-exports, and star imports. A name that leads outside
+  the project, a builtin, a type variable (`TypeVar`, PEP 695), or a module-level
+  alias or function is not a project class and creates no relationship. A name
+  imported from a project module that does not define it is reported as
+  `analysis::unresolved-reference`; ambiguous names as
+  `analysis::ambiguous-reference`.
+- A file that does not parse (for example Python 2 syntax) is reported as
+  `python::parse-error`, counted as failed, and skipped; other files continue.
+  Files over 5 MiB are skipped. Files are parsed in parallel; results are
+  deterministic.
+
 ## Relationship semantics
 
 - `FieldType` — field or enum-variant field type reference.
@@ -444,10 +524,17 @@ git diff --cached --check
   member details.
 - SVG rendering uses a monospace width estimate rather than embedded font
   metrics.
-- No Python support, semantic enrichment, or compiler execution.
+- Python analysis is syntactic: no interpreter, no type inference, and no
+  evaluation of dynamic imports, `__all__`, decorators, or runtime aliases
+  (the standard library's `collections.abc` is one). Module-level functions and
+  variables are not diagram nodes, since nodes are classes. Python projects are
+  found by root-level markers only; a `pyproject.toml` in a subdirectory of a
+  monorepo is not searched for. Visibility is shown with Rust spellings
+  (`pub`/`private`).
+- No semantic enrichment or compiler execution.
 
 ## Next milestone
 
-Potential next work: cross-platform packaging/CI and optional semantic enrichment
-behind a provider interface, or Python as a separate language crate. None of
+Potential next work: cross-platform packaging/CI, optional semantic enrichment
+behind a provider interface, a `--lang` override, and more languages. None of
 these are implemented here.

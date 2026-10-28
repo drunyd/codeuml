@@ -1,10 +1,11 @@
-//! Rust syntax analysis for CodeUML.
+//! Rust support for CodeUML.
 //!
-//! The analyzer parses Rust files with `syn` and lowers declarations into the
-//! language-neutral `codeuml-core` model. It also emits contextual
-//! [`RustReference`] values for fields, methods, aliases, trait bounds, and
-//! trait implementations. Project-wide resolution is performed by
-//! `codeuml-analysis`; no compiler or rust-analyzer integration is attempted.
+//! [`RustProvider`] implements `codeuml_lang::LanguageProvider`: it discovers
+//! Cargo packages (`cargo metadata --no-deps`, no downloads or compilation),
+//! parses each file with `syn`, lowers declarations into the language-neutral
+//! `codeuml-core` model, and resolves the extracted [`RustReference`] values
+//! against the merged project declaration index. No compiler or rust-analyzer
+//! integration is attempted.
 //!
 //! Module traversal follows conventional Rust file layout:
 //! `foo.rs`/`foo/mod.rs`, inline modules, crate roots, and nested module
@@ -15,11 +16,18 @@
 //! files continue to contribute to the result.
 
 mod analyzer;
+mod discovery;
 mod input;
+mod provider;
 mod references;
+mod resolution;
 
 pub use analyzer::analyze_package;
+pub use discovery::{
+    discover_project, DiscoveredPackage, DiscoveredProject, DiscoveredTarget, DiscoveryError,
+};
 pub use input::{RustPackageSources, RustTargetSource};
+pub use provider::RustProvider;
 pub use references::{RustImport, RustPathRoot, RustReference, RustTypePath};
 
 use codeuml_core::{Diagnostic, Module, TypeDecl};

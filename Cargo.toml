@@ -5,6 +5,8 @@ members = [
     "crates/codeuml-cli",
     "crates/codeuml-core",
     "crates/codeuml-diagram",
+    "crates/codeuml-lang",
+    "crates/codeuml-lang-python",
     "crates/codeuml-lang-rust",
     "crates/codeuml-metrics",
     "crates/codeuml-tui",

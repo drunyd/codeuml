@@ -2,10 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use codeuml_analysis::{analyze_project, ProjectPath};
 use codeuml_core::{
     Codebase, Relationship, RelationshipKind, RelationshipTarget, ResolutionStatus, TypeDecl,
 };
+use codeuml_lang::{LanguageProvider, ProjectPath};
+use codeuml_lang_rust::RustProvider;
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -52,7 +53,11 @@ impl TempProject {
 
     fn analyze(&self) -> Codebase {
         let project = ProjectPath::resolve(Some(&self.path)).expect("resolve project");
-        analyze_project(&project).expect("analyze project")
+        let mut codebase = Codebase::new("fixture");
+        RustProvider
+            .analyze(&project, &mut codebase)
+            .expect("analyze project");
+        codebase
     }
 }
 
@@ -605,7 +610,12 @@ pub struct Holder {
         ),
         &customer.id
     );
-    assert_eq!(codebase.analysis().files_failed, 1);
+    let parse_errors = codebase
+        .diagnostics()
+        .iter()
+        .filter(|diagnostic| diagnostic.code.as_deref() == Some("rust::parse-error"))
+        .count();
+    assert_eq!(parse_errors, 1);
 }
 
 #[test]

@@ -54,11 +54,10 @@ impl Metrics {
         let mut methods: HashMap<(String, String), f64> = HashMap::new();
         let mut namespaces: BTreeMap<String, f64> = BTreeMap::new();
         for entry in entries {
-            let key = (entry.namespace.clone(), entry.name.clone());
+            let namespace = normalize(&entry.namespace);
+            let key = (namespace.clone(), entry.name.clone());
             keep_worst(methods.entry(key), entry.crap);
-            let worst = namespaces
-                .entry(entry.namespace.clone())
-                .or_insert(entry.crap);
+            let worst = namespaces.entry(namespace).or_insert(entry.crap);
             *worst = worst.max(entry.crap);
         }
         Self {
@@ -110,10 +109,14 @@ fn keep_worst<K>(slot: Entry<'_, K, f64>, score: f64) {
         .or_insert(score);
 }
 
+/// Bring report namespaces and lookup names to one form: `::` separators (a
+/// Python `pkg.mod.Class` becomes `pkg::mod::Class`) and underscores in the
+/// leading crate/package segment (Cargo packages may contain hyphens).
 fn normalize(qualified_name: &str) -> String {
-    match qualified_name.split_once("::") {
+    let separated = qualified_name.replace('.', "::");
+    match separated.split_once("::") {
         Some((crate_name, rest)) => format!("{}::{rest}", crate_name.replace('-', "_")),
-        None => qualified_name.replace('-', "_"),
+        None => separated.replace('-', "_"),
     }
 }
 
@@ -230,6 +233,27 @@ mod tests {
         assert_eq!(metrics.module_score("my_crate"), Some(99.0));
         assert_eq!(metrics.module_score("my-crate::absent"), None);
         assert_eq!(metrics.module_score("other"), None);
+    }
+
+    #[test]
+    fn dotted_python_namespaces_resolve_like_rust_paths() {
+        let metrics = Metrics::new(
+            &[
+                entry("pkg.service.Handler", "run", 13.0),
+                entry("pkg.service", "helper", 2.0),
+                entry("pkg.other", "util", 5.0),
+            ],
+            CrapThresholds::default(),
+        );
+        assert_eq!(
+            metrics.method_score("pkg.service.Handler", "run"),
+            Some(13.0)
+        );
+        assert_eq!(metrics.type_score("pkg.service.Handler"), Some(13.0));
+        assert_eq!(metrics.module_score("pkg.service"), Some(13.0));
+        assert_eq!(metrics.module_score("pkg"), Some(13.0));
+        assert_eq!(metrics.module_score("pkg.other"), Some(5.0));
+        assert_eq!(metrics.module_score("pkg.absent"), None);
     }
 
     #[test]

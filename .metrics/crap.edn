@@ -6,7 +6,7 @@
   {:name "run_svg", :namespace "codeuml_cli", :complexity 11, :coverage 100.0, :crap 11.0}
   {:name "handle_architecture", :namespace "codeuml_tui::app::App", :complexity 11, :coverage 100.0, :crap 11.0}
   {:name "load_source", :namespace "codeuml_tui::source", :complexity 10, :coverage 82.1429, :crap 10.5694}
-  {:name "direct_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 10, :coverage 86.2069, :crap 10.2624}
+  {:name "direct_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 10, :coverage 86.2069, :crap 10.2624}
   {:name "relationship_row_text", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 87.5, :crap 10.1953}
   {:name "write_summary", :namespace "codeuml_cli", :complexity 10, :coverage 88.8889, :crap 10.1372}
   {:name "handle_browse", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 91.6667, :crap 10.0579}
@@ -19,7 +19,7 @@
   {:name "handle", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "handle_diagram", :namespace "codeuml_tui::app::App", :complexity 10, :coverage 100.0, :crap 10.0}
   {:name "render_architecture", :namespace "codeuml_tui::render", :complexity 9, :coverage 80.0, :crap 9.648}
-  {:name "resolve_references", :namespace "codeuml_analysis::resolution", :complexity 9, :coverage 88.4058, :crap 9.1262}
+  {:name "resolve_references", :namespace "codeuml_lang_rust::resolution", :complexity 9, :coverage 88.4058, :crap 9.1262}
   {:name "action_for_mode", :namespace "codeuml_tui::input", :complexity 9, :coverage 90.9091, :crap 9.0609}
   {:name "edge_cell_style", :namespace "codeuml_tui::render", :complexity 9, :coverage 90.9091, :crap 9.0609}
   {:name "assign_levels", :namespace "codeuml_tui::terminal_diagram", :complexity 9, :coverage 94.7368, :crap 9.0118}
@@ -29,48 +29,54 @@
   {:name "edge_visual", :namespace "codeuml_tui::terminal_diagram", :complexity 9, :coverage 100.0, :crap 9.0}
   {:name "extract_path_arguments", :namespace "codeuml_lang_rust::analyzer", :complexity 7, :coverage 66.6667, :crap 8.8148}
   {:name "visibility", :namespace "codeuml_lang_rust::analyzer", :complexity 8, :coverage 77.7778, :crap 8.7023}
-  {:name "process_target_entry", :namespace "codeuml_analysis::discovery", :complexity 8, :coverage 78.7879, :crap 8.6108}
-  {:name "resolve", :namespace "codeuml_analysis::ProjectPath", :complexity 7, :coverage 69.5652, :crap 8.3814}
+  {:name "process_target_entry", :namespace "codeuml_lang_rust::discovery", :complexity 8, :coverage 78.7879, :crap 8.6108}
+  {:name "resolve", :namespace "codeuml_lang::project_path::ProjectPath", :complexity 7, :coverage 69.5652, :crap 8.3814}
   {:name "draw_edge_arrow", :namespace "codeuml_tui::terminal_diagram", :complexity 8, :coverage 85.0, :crap 8.216}
-  {:name "relative_path", :namespace "codeuml_analysis::discovery", :complexity 8, :coverage 87.5, :crap 8.125}
+  {:name "relative_path", :namespace "codeuml_lang_rust::discovery", :complexity 8, :coverage 87.5, :crap 8.125}
   {:name "extract_wrapped_type", :namespace "codeuml_lang_rust::analyzer", :complexity 8, :coverage 88.2353, :crap 8.1042}
   {:name "handle_scope_dialog", :namespace "codeuml_tui::app::App", :complexity 8, :coverage 92.3077, :crap 8.0291}
   {:name "draw_box", :namespace "codeuml_tui::terminal_diagram", :complexity 8, :coverage 95.4545, :crap 8.006}
   {:name "generic_bound_references", :namespace "codeuml_lang_rust::analyzer", :complexity 8, :coverage 96.4286, :crap 8.0029}
   {:name "svg_requested", :namespace "codeuml_cli::Cli", :complexity 8, :coverage 100.0, :crap 8.0}
   {:name "escape_xml", :namespace "codeuml_diagram::svg", :complexity 8, :coverage 100.0, :crap 8.0}
+  {:name "param_fact", :namespace "codeuml_lang_python::extract", :complexity 8, :coverage 100.0, :crap 8.0}
+  {:name "visit", :namespace "codeuml_lang_python::extract::Walker", :complexity 8, :coverage 100.0, :crap 8.0}
   {:name "flatten_use_tree", :namespace "codeuml_lang_rust::analyzer", :complexity 8, :coverage 100.0, :crap 8.0}
   {:name "style_for_visual", :namespace "codeuml_tui::terminal_diagram", :complexity 8, :coverage 100.0, :crap 8.0}
   {:name "lower_mod", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 7, :coverage 77.2277, :crap 7.5787}
+  {:name "link", :namespace "codeuml_lang_python::resolve::Linker", :complexity 7, :coverage 81.3953, :crap 7.3155}
   {:name "handle_search", :namespace "codeuml_tui::app::App", :complexity 7, :coverage 89.4737, :crap 7.0572}
   {:name "route_edge", :namespace "codeuml_diagram::svg", :complexity 7, :coverage 90.9091, :crap 7.0368}
   {:name "render_relationships", :namespace "codeuml_tui::render", :complexity 7, :coverage 92.1053, :crap 7.0241}
-  {:name "discover_package", :namespace "codeuml_analysis::discovery", :complexity 7, :coverage 93.0233, :crap 7.0166}
+  {:name "discover_package", :namespace "codeuml_lang_rust::discovery", :complexity 7, :coverage 93.0233, :crap 7.0166}
   {:name "main", :namespace "codeuml_cli", :complexity 7, :coverage 94.1176, :crap 7.01}
-  {:name "classify_early_exit", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 7, :coverage 95.2381, :crap 7.0053}
+  {:name "classify_early_exit", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 7, :coverage 95.2381, :crap 7.0053}
   {:name "layout_edge", :namespace "codeuml_diagram::svg", :complexity 7, :coverage 95.5556, :crap 7.0043}
   {:name "add_relationship", :namespace "codeuml_diagram::projection::ProjectionBuilder", :complexity 7, :coverage 97.2222, :crap 7.0011}
   {:name "diagram_row", :namespace "codeuml_tui::render", :complexity 7, :coverage 97.3684, :crap 7.0009}
   {:name "node_content", :namespace "codeuml_diagram::svg", :complexity 7, :coverage 97.561, :crap 7.0007}
   {:name "terminal_node_content", :namespace "codeuml_tui::terminal_diagram", :complexity 7, :coverage 97.8261, :crap 7.0005}
-  {:name "discover_project_with_cargo", :namespace "codeuml_analysis::discovery", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "validate_scope_options", :namespace "codeuml_cli", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "validate_relationship_target", :namespace "codeuml_core::codebase::Codebase", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "project", :namespace "codeuml_diagram::projection", :complexity 7, :coverage 100.0, :crap 7.0}
+  {:name "dotted_path", :namespace "codeuml_lang_python::annotation", :complexity 7, :coverage 100.0, :crap 7.0}
+  {:name "class_members", :namespace "codeuml_lang_python::extract", :complexity 7, :coverage 100.0, :crap 7.0}
+  {:name "bind_import", :namespace "codeuml_lang_python::resolve", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "extract_angle_arguments", :namespace "codeuml_lang_rust::analyzer", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "resolve_named_type", :namespace "codeuml_lang_rust::analyzer", :complexity 7, :coverage 100.0, :crap 7.0}
+  {:name "discover_project_with_cargo", :namespace "codeuml_lang_rust::discovery", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "parse_report", :namespace "codeuml_metrics::report", :complexity 7, :coverage 100.0, :crap 7.0}
   {:name "route_horizontal", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 43.75, :crap 6.8477}
-  {:name "source_entry_info", :namespace "codeuml_analysis::discovery", :complexity 6, :coverage 72.0, :crap 6.7903}
+  {:name "source_entry_info", :namespace "codeuml_lang_rust::discovery", :complexity 6, :coverage 72.0, :crap 6.7903}
   {:name "use_vertical_route", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 60.0, :crap 6.6}
   {:name "analyze_targets", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 6, :coverage 75.9259, :crap 6.5023}
   {:name "validate_summary_options", :namespace "codeuml_cli", :complexity 6, :coverage 81.25, :crap 6.2373}
-  {:name "lower_impl", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 6, :coverage 83.7209, :crap 6.1553}
   {:name "new", :namespace "codeuml_diagram::projection::ProjectionBuilder", :complexity 6, :coverage 84.0, :crap 6.1475}
   {:name "navigate_to_type", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 64.2857, :crap 6.1388}
   {:name "route_horizontal_edge", :namespace "codeuml_tui::terminal_diagram", :complexity 6, :coverage 84.4444, :crap 6.1355}
   {:name "route_vertical_edge", :namespace "codeuml_tui::terminal_diagram", :complexity 6, :coverage 84.4444, :crap 6.1355}
   {:name "navigate_to_boundary", :namespace "codeuml_tui::app::App", :complexity 6, :coverage 84.6154, :crap 6.1311}
+  {:name "lower_impl", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 6, :coverage 86.0465, :crap 6.0978}
   {:name "place_nodes", :namespace "codeuml_diagram::svg", :complexity 6, :coverage 87.5, :crap 6.0703}
   {:name "list_navigation_delta", :namespace "codeuml_tui::app", :complexity 6, :coverage 87.5, :crap 6.0703}
   {:name "handle_browse_navigation_commands", :namespace "codeuml_tui::app::App", :complexity 6, :coverage 87.5, :crap 6.0703}
@@ -79,12 +85,16 @@
   {:name "node_members", :namespace "codeuml_diagram::projection", :complexity 5, :coverage 65.1163, :crap 6.0612}
   {:name "extract_trait_type_bounds", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 90.9091, :crap 6.027}
   {:name "put_text", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 6, :coverage 90.9091, :crap 6.027}
-  {:name "discover_targets", :namespace "codeuml_analysis::discovery", :complexity 6, :coverage 93.1034, :crap 6.0118}
+  {:name "discover_targets", :namespace "codeuml_lang_rust::discovery", :complexity 6, :coverage 93.1034, :crap 6.0118}
   {:name "render_diagnostics", :namespace "codeuml_tui::render", :complexity 6, :coverage 94.1176, :crap 6.0073}
   {:name "generic_params", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 96.5517, :crap 6.0015}
   {:name "run_interactive", :namespace "codeuml_cli", :complexity 2, :coverage 0.0, :crap 6.0}
   {:name "write_svg_file", :namespace "codeuml_cli", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "fmt", :namespace "codeuml_core::declaration::Visibility", :complexity 6, :coverage 100.0, :crap 6.0}
+  {:name "collect", :namespace "codeuml_lang_python::annotation", :complexity 6, :coverage 100.0, :crap 6.0}
+  {:name "visit_entry", :namespace "codeuml_lang_python::discovery", :complexity 6, :coverage 100.0, :crap 6.0}
+  {:name "resolve", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 6, :coverage 100.0, :crap 6.0}
+  {:name "unbound", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "path_root", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "rust_type_path", :namespace "codeuml_lang_rust::analyzer", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "parse_config", :namespace "codeuml_metrics::config", :complexity 6, :coverage 100.0, :crap 6.0}
@@ -93,7 +103,7 @@
   {:name "run_event_loop", :namespace "codeuml_tui::terminal", :complexity 6, :coverage 100.0, :crap 6.0}
   {:name "enter", :namespace "codeuml_tui::terminal::TerminalGuard", :complexity 2, :coverage 0.0, :crap 6.0}
   {:name "enter_alternate_screen", :namespace "codeuml_tui::terminal::TerminalGuard", :complexity 2, :coverage 0.0, :crap 6.0}
-  {:name "discover_package_paths", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 51.7241, :crap 5.8002}
+  {:name "discover_package_paths", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 51.7241, :crap 5.8002}
   {:name "architecture_source_target", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 70.5882, :crap 5.6361}
   {:name "handle_browse_search", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 71.4286, :crap 5.5831}
   {:name "parse_source", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 5, :coverage 72.4138, :crap 5.5248}
@@ -101,31 +111,45 @@
   {:name "matches_scope", :namespace "codeuml_tui::app::ScopeChoice", :complexity 5, :coverage 72.7273, :crap 5.5071}
   {:name "report_unreachable_sources", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 3, :coverage 35.7143, :crap 5.391}
   {:name "toggle_focus", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 75.0, :crap 5.3906}
-  {:name "resolve_module", :namespace "codeuml_cli", :complexity 5, :coverage 75.8621, :crap 5.3516}
+  {:name "parse_tree", :namespace "codeuml_lang_python::extract", :complexity 5, :coverage 76.9231, :crap 5.3072}
   {:name "validate_export_options", :namespace "codeuml_cli", :complexity 5, :coverage 78.5714, :crap 5.246}
+  {:name "resolve_module", :namespace "codeuml_cli", :complexity 5, :coverage 79.3103, :crap 5.2214}
   {:name "try_navigate_to_type", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 82.3529, :crap 5.1374}
-  {:name "load_metadata", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 85.7143, :crap 5.0729}
+  {:name "load_metadata", :namespace "codeuml_lang_rust::discovery", :complexity 5, :coverage 85.7143, :crap 5.0729}
   {:name "handle_browse_overlays", :namespace "codeuml_tui::app::App", :complexity 5, :coverage 85.7143, :crap 5.0729}
+  {:name "build_model", :namespace "codeuml_lang_python::provider", :complexity 5, :coverage 86.6667, :crap 5.0593}
+  {:name "parameter_name", :namespace "codeuml_lang_python::extract", :complexity 5, :coverage 87.5, :crap 5.0488}
   {:name "layout_boundaries", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 87.5, :crap 5.0488}
   {:name "put_arrow", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 5, :coverage 87.5, :crap 5.0488}
+  {:name "read_report", :namespace "codeuml_metrics", :complexity 5, :coverage 88.8889, :crap 5.0343}
   {:name "node_cell_style", :namespace "codeuml_tui::render", :complexity 5, :coverage 88.8889, :crap 5.0343}
+  {:name "analyze", :namespace "codeuml_lang_python::provider::PythonProvider", :complexity 5, :coverage 89.4737, :crap 5.0292}
   {:name "place_node_rects", :namespace "codeuml_tui::terminal_diagram", :complexity 5, :coverage 89.6552, :crap 5.0277}
   {:name "to_text", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 5, :coverage 91.6667, :crap 5.0145}
   {:name "write_diagnostics", :namespace "codeuml_cli", :complexity 5, :coverage 92.5926, :crap 5.0102}
-  {:name "discover_target", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 93.1034, :crap 5.0082}
-  {:name "add_target_source", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 94.1176, :crap 5.0051}
-  {:name "resolve_type", :namespace "codeuml_cli", :complexity 5, :coverage 96.5517, :crap 5.001}
+  {:name "follow", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 5, :coverage 92.8571, :crap 5.0091}
+  {:name "discover_target", :namespace "codeuml_lang_rust::discovery", :complexity 5, :coverage 93.1034, :crap 5.0082}
+  {:name "absent", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 5, :coverage 93.3333, :crap 5.0074}
+  {:name "add_target_source", :namespace "codeuml_lang_rust::discovery", :complexity 5, :coverage 94.1176, :crap 5.0051}
   {:name "render_type_list", :namespace "codeuml_tui::render", :complexity 5, :coverage 97.9167, :crap 5.0002}
-  {:name "process_source_entry", :namespace "codeuml_analysis::discovery", :complexity 5, :coverage 100.0, :crap 5.0}
-  {:name "is_external_reference", :namespace "codeuml_analysis::resolution", :complexity 5, :coverage 100.0, :crap 5.0}
-  {:name "new", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "run_providers", :namespace "codeuml_analysis::analysis", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "resolve_type", :namespace "codeuml_cli", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "validate_module_scope", :namespace "codeuml_cli", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "validate_neighborhood_scope", :namespace "codeuml_cli", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "select_neighbor_nodes", :namespace "codeuml_diagram::projection", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "edge_endpoint", :namespace "codeuml_diagram::svg", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "add_package_infos", :namespace "codeuml_lang_python::build", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "add_types", :namespace "codeuml_lang_python::build", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "make_source", :namespace "codeuml_lang_python::discovery", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "relative_module", :namespace "codeuml_lang_python::extract", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "self_attribute", :namespace "codeuml_lang_python::extract", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "bind_module", :namespace "codeuml_lang_python::resolve", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "import_base", :namespace "codeuml_lang_python::resolve", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "field_references", :namespace "codeuml_lang_rust::analyzer", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "method_spec", :namespace "codeuml_lang_rust::analyzer", :complexity 5, :coverage 100.0, :crap 5.0}
-  {:name "read_report", :namespace "codeuml_metrics", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "process_source_entry", :namespace "codeuml_lang_rust::discovery", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "is_external_reference", :namespace "codeuml_lang_rust::resolution", :complexity 5, :coverage 100.0, :crap 5.0}
+  {:name "new", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "read_number", :namespace "codeuml_metrics::config", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "read_string", :namespace "codeuml_metrics::report", :complexity 5, :coverage 100.0, :crap 5.0}
   {:name "unescape", :namespace "codeuml_metrics::report", :complexity 5, :coverage 100.0, :crap 5.0}
@@ -143,10 +167,11 @@
   {:name "open_diagram", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 71.4286, :crap 4.3732}
   {:name "where_lifetime_bounds", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 75.0, :crap 4.25}
   {:name "render_diagram", :namespace "codeuml_tui::render", :complexity 4, :coverage 77.2727, :crap 4.1878}
-  {:name "normalize_checked_source", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 77.7778, :crap 4.1756}
-  {:name "inspect_directory", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 78.5714, :crap 4.1574}
-  {:name "inspect_source_link", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 78.5714, :crap 4.1574}
+  {:name "normalize_checked_source", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 77.7778, :crap 4.1756}
+  {:name "inspect_directory", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 78.5714, :crap 4.1574}
+  {:name "inspect_source_link", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 78.5714, :crap 4.1574}
   {:name "endpoint_for_symbol", :namespace "codeuml_diagram::projection::ProjectionBuilder", :complexity 3, :coverage 50.0, :crap 4.125}
+  {:name "first_identifier", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 81.8182, :crap 4.0962}
   {:name "confirm_scope_choice", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 81.8182, :crap 4.0962}
   {:name "add_relationship", :namespace "codeuml_core::codebase::Codebase", :complexity 4, :coverage 82.3529, :crap 4.0879}
   {:name "boundary_label", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 83.3333, :crap 4.0741}
@@ -159,21 +184,20 @@
   {:name "place_boundaries", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 90.625, :crap 4.0132}
   {:name "set_diagram_viewport", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 90.9091, :crap 4.012}
   {:name "scope", :namespace "codeuml_tui::app::ScopeChoice", :complexity 4, :coverage 90.9091, :crap 4.012}
+  {:name "record_failures", :namespace "codeuml_analysis::analysis", :complexity 4, :coverage 91.6667, :crap 4.0093}
   {:name "where_type_bounds", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 91.6667, :crap 4.0093}
   {:name "boundary_label", :namespace "codeuml_tui::terminal_diagram", :complexity 4, :coverage 92.8571, :crap 4.0058}
-  {:name "collect_target_support", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 94.1176, :crap 4.0033}
+  {:name "collect_generic", :namespace "codeuml_lang_python::annotation", :complexity 4, :coverage 94.1176, :crap 4.0033}
+  {:name "collect_target_support", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 94.1176, :crap 4.0033}
   {:name "place_label", :namespace "codeuml_tui::terminal_diagram", :complexity 4, :coverage 94.1176, :crap 4.0033}
   {:name "header_rows", :namespace "codeuml_tui::format", :complexity 4, :coverage 96.4286, :crap 4.0007}
-  {:name "lower_trait", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 4, :coverage 96.7742, :crap 4.0005}
-  {:name "discover_packages", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
-  {:name "parse_workspace_members", :namespace "codeuml_analysis::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
-  {:name "add_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 4, :coverage 100.0, :crap 4.0}
-  {:name "resolve_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "add_method", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 96.9697, :crap 4.0004}
   {:name "build_scope", :namespace "codeuml_cli", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "resolve_scope_kind", :namespace "codeuml_cli", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "run", :namespace "codeuml_cli", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "validate_project_scope", :namespace "codeuml_cli", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "fmt", :namespace "codeuml_core::diagnostic::DiagnosticSeverity", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "fmt", :namespace "codeuml_core::language::Language", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "neighborhood_matches", :namespace "codeuml_diagram::projection", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "select_neighborhood_relationships", :namespace "codeuml_diagram::projection", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "select_relationships", :namespace "codeuml_diagram::projection", :complexity 4, :coverage 100.0, :crap 4.0}
@@ -181,9 +205,34 @@
   {:name "render_boundaries", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "route_vertical", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "truncate_text", :namespace "codeuml_diagram::svg", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "strip_quotes", :namespace "codeuml_lang_python::annotation", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "add_modules", :namespace "codeuml_lang_python::build", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "type_kind", :namespace "codeuml_lang_python::build", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "is_excluded_directory", :namespace "codeuml_lang_python::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "is_test_file", :namespace "codeuml_lang_python::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "source_roots", :namespace "codeuml_lang_python::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "walk", :namespace "codeuml_lang_python::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "base_ref", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "class_kind", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "collect_assignments", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "first_error", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "superclasses", :namespace "codeuml_lang_python::extract", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "visibility_of", :namespace "codeuml_lang_python::facts", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "parse_source", :namespace "codeuml_lang_python::provider", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "parse_sources", :namespace "codeuml_lang_python::provider", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "join", :namespace "codeuml_lang_python::resolve", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "link_class", :namespace "codeuml_lang_python::resolve::Linker", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "imported_symbol", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "lookup", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "extract_path_type", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "generic_names", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "lower_fields", :namespace "codeuml_lang_rust::analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "lower_trait", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "discover_packages", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "parse_workspace_members", :namespace "codeuml_lang_rust::discovery", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "analyze", :namespace "codeuml_lang_rust::provider::RustProvider", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "add_import_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 4, :coverage 100.0, :crap 4.0}
+  {:name "resolve_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "read_thresholds", :namespace "codeuml_metrics::config", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "into_entry", :namespace "codeuml_metrics::report::Fields", :complexity 4, :coverage 100.0, :crap 4.0}
   {:name "current_scope_label", :namespace "codeuml_tui::app::App", :complexity 4, :coverage 100.0, :crap 4.0}
@@ -212,24 +261,22 @@
   {:name "push_segment", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 85.7143, :crap 3.0262}
   {:name "add_continuation_span", :namespace "codeuml_tui::render", :complexity 3, :coverage 87.5, :crap 3.0176}
   {:name "open_source", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 88.2353, :crap 3.0147}
-  {:name "add_package_modules", :namespace "codeuml_analysis::analysis", :complexity 3, :coverage 90.0, :crap 3.009}
-  {:name "add_package_types", :namespace "codeuml_analysis::analysis", :complexity 3, :coverage 90.0, :crap 3.009}
+  {:name "module_name", :namespace "codeuml_lang_python::discovery::PySource", :complexity 3, :coverage 90.0, :crap 3.009}
   {:name "into_method", :namespace "codeuml_lang_rust::analyzer::MethodSpec", :complexity 3, :coverage 90.0, :crap 3.009}
+  {:name "add_package_modules", :namespace "codeuml_lang_rust::provider", :complexity 3, :coverage 90.0, :crap 3.009}
+  {:name "add_package_types", :namespace "codeuml_lang_rust::provider", :complexity 3, :coverage 90.0, :crap 3.009}
   {:name "move_type", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 92.3077, :crap 3.0041}
   {:name "center_diagram_on_selected", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 92.5926, :crap 3.0037}
-  {:name "walk_source_directory", :namespace "codeuml_analysis::discovery", :complexity 3, :coverage 93.3333, :crap 3.0027}
-  {:name "add_named_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 3, :coverage 93.3333, :crap 3.0027}
+  {:name "walk_source_directory", :namespace "codeuml_lang_rust::discovery", :complexity 3, :coverage 93.3333, :crap 3.0027}
+  {:name "add_named_import_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 3, :coverage 93.3333, :crap 3.0027}
+  {:name "read_text", :namespace "codeuml_metrics", :complexity 3, :coverage 93.3333, :crap 3.0027}
+  {:name "method", :namespace "codeuml_lang_python::build", :complexity 3, :coverage 94.7368, :crap 3.0013}
+  {:name "visit_class", :namespace "codeuml_lang_python::extract::Walker", :complexity 3, :coverage 94.7368, :crap 3.0013}
   {:name "segment_label", :namespace "codeuml_tui::terminal_diagram", :complexity 3, :coverage 95.8333, :crap 3.0007}
-  {:name "set_analysis_metadata", :namespace "codeuml_analysis::analysis", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "collect_conventional_directory", :namespace "codeuml_analysis::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "collect_package_sources", :namespace "codeuml_analysis::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "parse_target_kinds", :namespace "codeuml_analysis::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "read_directory", :namespace "codeuml_analysis::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "resolve", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "analyze_project", :namespace "codeuml_analysis::analysis", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "load_project", :namespace "codeuml_cli", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "fmt", :namespace "codeuml_core::analysis::AnalysisMode", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "insert_new_id", :namespace "codeuml_core::codebase::Codebase", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "fmt", :namespace "codeuml_core::language::Language", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "merge_observation", :namespace "codeuml_core::relationship::Relationship", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "same_identity", :namespace "codeuml_core::relationship::Relationship", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "symbol", :namespace "codeuml_core::relationship::RelationshipTarget", :complexity 3, :coverage 100.0, :crap 3.0}
@@ -243,14 +290,31 @@
   {:name "mark_unresolved_boundaries", :namespace "codeuml_diagram::svg", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "render_edges", :namespace "codeuml_diagram::svg", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "render_nodes", :namespace "codeuml_diagram::svg", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "generic_arguments", :namespace "codeuml_lang_python::annotation", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "parse_expression", :namespace "codeuml_lang_python::annotation", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "field", :namespace "codeuml_lang_python::build", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "module_infos", :namespace "codeuml_lang_python::build", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "is_python_project", :namespace "codeuml_lang_python::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "class_attribute", :namespace "codeuml_lang_python::extract", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "imported", :namespace "codeuml_lang_python::extract", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "is_dunder", :namespace "codeuml_lang_python::extract", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "metaclass_name", :namespace "codeuml_lang_python::extract", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "note_type_parameters", :namespace "codeuml_lang_python::extract::Walker", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "visit_function", :namespace "codeuml_lang_python::extract::Walker", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "relation_kind", :namespace "codeuml_lang_python::resolve", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "scope_for", :namespace "codeuml_lang_python::resolve", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "add_use_name", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "add_use_rename", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "imports_from_items", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "is_safe_relative_path", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "normalize_tokens", :namespace "codeuml_lang_rust::analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "parsed_file", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "collect_conventional_directory", :namespace "codeuml_lang_rust::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "collect_package_sources", :namespace "codeuml_lang_rust::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "parse_target_kinds", :namespace "codeuml_lang_rust::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "read_directory", :namespace "codeuml_lang_rust::discovery", :complexity 3, :coverage 100.0, :crap 3.0}
+  {:name "resolve", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "normalize", :namespace "codeuml_metrics", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "read_text", :namespace "codeuml_metrics", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "level", :namespace "codeuml_metrics::config::CrapThresholds", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "build_scope_choices", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "clamp_diagram_pan", :namespace "codeuml_tui::app::App", :complexity 3, :coverage 100.0, :crap 3.0}
@@ -276,33 +340,25 @@
   {:name "place_edge_labels", :namespace "codeuml_tui::terminal_diagram", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "add_segment", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 3, :coverage 100.0, :crap 3.0}
   {:name "finalize_edges", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 3, :coverage 100.0, :crap 3.0}
-  {:name "add_model_error_diagnostics", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 42.8571, :crap 2.7464}
+  {:name "add_model_error_diagnostics", :namespace "codeuml_lang_rust::provider", :complexity 2, :coverage 42.8571, :crap 2.7464}
   {:name "move_relationship", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 66.6667, :crap 2.1481}
+  {:name "add_discovery_diagnostics", :namespace "codeuml_lang_rust::provider", :complexity 2, :coverage 71.4286, :crap 2.0933}
   {:name "select_diagram_node", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 75.0, :crap 2.0625}
   {:name "move_architecture_selection", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 77.7778, :crap 2.0439}
   {:name "move_diagnostic", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 77.7778, :crap 2.0439}
   {:name "move_scope_choice", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 77.7778, :crap 2.0439}
-  {:name "add_discovery_diagnostics", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 80.0, :crap 2.032}
   {:name "selected_visible_index", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 80.0, :crap 2.032}
   {:name "push_history", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 83.3333, :crap 2.0185}
   {:name "update_canvas_bounds", :namespace "codeuml_tui::terminal_diagram", :complexity 2, :coverage 83.3333, :crap 2.0185}
   {:name "add_module", :namespace "codeuml_core::codebase::Codebase", :complexity 2, :coverage 87.5, :crap 2.0078}
   {:name "cancel_or_clear_search", :namespace "codeuml_tui::app::App", :complexity 2, :coverage 90.0, :crap 2.004}
+  {:name "visit_type_alias", :namespace "codeuml_lang_python::extract::Walker", :complexity 2, :coverage 91.6667, :crap 2.0023}
+  {:name "new", :namespace "codeuml_metrics::Metrics", :complexity 2, :coverage 93.75, :crap 2.001}
   {:name "render_source", :namespace "codeuml_tui::render", :complexity 2, :coverage 96.875, :crap 2.0001}
   {:name "layout_edges", :namespace "codeuml_tui::terminal_diagram", :complexity 2, :coverage 97.5, :crap 2.0001}
-  {:name "as_ref", :namespace "codeuml_analysis::ProjectPath", :complexity 1, :coverage 0.0, :crap 2.0}
-  {:name "into_path_buf", :namespace "codeuml_analysis::ProjectPath", :complexity 1, :coverage 0.0, :crap 2.0}
-  {:name "add_discovered_files", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "add_package_diagnostics", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "analyze_project", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "merge_package_analyses", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "checked_source_path", :namespace "codeuml_analysis::discovery", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "is_rust_file", :namespace "codeuml_analysis::discovery", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "join_qualified", :namespace "codeuml_analysis::resolution", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "add_candidate", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "add_glob_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "gather_direct_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "gather_import_candidates", :namespace "codeuml_analysis::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "add_reports", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "no_supported_project", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "set_analysis_metadata", :namespace "codeuml_analysis::analysis", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "build_module_scope", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "build_neighborhood_scope", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "load_metrics", :namespace "codeuml_cli", :complexity 2, :coverage 100.0, :crap 2.0}
@@ -342,14 +398,46 @@
   {:name "render_header", :namespace "codeuml_diagram::svg", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "render_legend", :namespace "codeuml_diagram::svg", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "render_svg", :namespace "codeuml_diagram::svg", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "as_ref", :namespace "codeuml_lang::project_path::ProjectPath", :complexity 1, :coverage 0.0, :crap 2.0}
+  {:name "into_path_buf", :namespace "codeuml_lang::project_path::ProjectPath", :complexity 1, :coverage 0.0, :crap 2.0}
+  {:name "collect_children", :namespace "codeuml_lang_python::annotation", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "collect_forward", :namespace "codeuml_lang_python::annotation", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "push_dotted", :namespace "codeuml_lang_python::annotation", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "type_decl", :namespace "codeuml_lang_python::build", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "has_python_files", :namespace "codeuml_lang_python::discovery", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "annotation_from_parameter", :namespace "codeuml_lang_python::extract", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "class_fact", :namespace "codeuml_lang_python::extract", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "extract", :namespace "codeuml_lang_python::extract", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "from_statement", :namespace "codeuml_lang_python::extract", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "push_field", :namespace "codeuml_lang_python::extract", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "define", :namespace "codeuml_lang_python::extract::Walker", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "note_type_var", :namespace "codeuml_lang_python::extract::Walker", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "visit_assignment", :namespace "codeuml_lang_python::extract::Walker", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "visit_children", :namespace "codeuml_lang_python::extract::Walker", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "parse_claimed", :namespace "codeuml_lang_python::provider", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "link_all", :namespace "codeuml_lang_python::resolve::Linker", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "in_module", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "is_internal", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "missing", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "new", :namespace "codeuml_lang_python::resolve::Resolver", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "write", :namespace "codeuml_lang_python::test_support::TempDir", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "emit_pending", :namespace "codeuml_lang_rust::analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "extract_associated_type", :namespace "codeuml_lang_rust::analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "extract_bound_reference", :namespace "codeuml_lang_rust::analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "qualify", :namespace "codeuml_lang_rust::analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "apply_impls", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "lower_enum", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "checked_source_path", :namespace "codeuml_lang_rust::discovery", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "is_rust_file", :namespace "codeuml_lang_rust::discovery", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "add_discovered_files", :namespace "codeuml_lang_rust::provider", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "add_package_diagnostics", :namespace "codeuml_lang_rust::provider", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "merge_package_analyses", :namespace "codeuml_lang_rust::provider", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "join_qualified", :namespace "codeuml_lang_rust::resolution", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "add_candidate", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "add_glob_import_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "gather_direct_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
+  {:name "gather_import_candidates", :namespace "codeuml_lang_rust::resolution::ResolutionIndex", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "read_config", :namespace "codeuml_metrics", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "new", :namespace "codeuml_metrics::Metrics", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "assign_value", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "is_separator", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "is_word_end", :namespace "codeuml_metrics::report", :complexity 2, :coverage 100.0, :crap 2.0}
@@ -387,26 +475,14 @@
   {:name "add_mask", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "put_char", :namespace "codeuml_tui::terminal_diagram::TerminalCanvas", :complexity 2, :coverage 100.0, :crap 2.0}
   {:name "fixture_project", :namespace "codeuml_tui::test_support", :complexity 2, :coverage 100.0, :crap 2.0}
-  {:name "relative_source_path", :namespace "codeuml_analysis::discovery", :complexity 1, :coverage 72.7273, :crap 1.0203}
+  {:name "relative_source_path", :namespace "codeuml_lang_rust::discovery", :complexity 1, :coverage 72.7273, :crap 1.0203}
   {:name "leave_architecture_level", :namespace "codeuml_tui::app::App", :complexity 1, :coverage 77.7778, :crap 1.011}
-  {:name "as_path", :namespace "codeuml_analysis::ProjectPath", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "analyze_packages", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "collect_references", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "is_library_target", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "rust_package_sources", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "discover_project", :namespace "codeuml_analysis::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "discovery_diagnostic", :namespace "codeuml_analysis::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "is_excluded_directory", :namespace "codeuml_analysis::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "required_str", :namespace "codeuml_analysis::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "diagnostics", :namespace "codeuml_analysis::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "packages", :namespace "codeuml_analysis::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "root", :namespace "codeuml_analysis::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "source_files", :namespace "codeuml_analysis::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "is_known_external_path", :namespace "codeuml_analysis::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "is_primitive", :namespace "codeuml_analysis::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "module_qualified", :namespace "codeuml_analysis::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "needs_unresolved_diagnostic", :namespace "codeuml_analysis::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "normalize_crate_identifier", :namespace "codeuml_analysis::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "module_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 80.0, :crap 1.008}
+  {:name "init_attributes", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 91.6667, :crap 1.0006}
+  {:name "decorated_method", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 94.1176, :crap 1.0002}
+  {:name "detect_providers", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "project_name", :namespace "codeuml_analysis::analysis", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "default_providers", :namespace "codeuml_cli", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "summary_requested", :namespace "codeuml_cli::Cli", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "add_diagnostic", :namespace "codeuml_core::codebase::Codebase", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "diagnostics", :namespace "codeuml_core::codebase::Codebase", :complexity 1, :coverage 100.0, :crap 1.0}
@@ -467,6 +543,38 @@
   {:name "new", :namespace "codeuml_diagram::svg::LayoutRect", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "right", :namespace "codeuml_diagram::svg::LayoutRect", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "default", :namespace "codeuml_diagram::svg::SvgOptions", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "new", :namespace "codeuml_lang::ProviderError", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "provider", :namespace "codeuml_lang::ProviderError", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "as_path", :namespace "codeuml_lang::project_path::ProjectPath", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "node_location", :namespace "codeuml_lang_python::annotation", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "node_text", :namespace "codeuml_lang_python::annotation", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "parse_annotation", :namespace "codeuml_lang_python::annotation", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "top_of_file", :namespace "codeuml_lang_python::build", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "discover", :namespace "codeuml_lang_python::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_plain_directory", :namespace "codeuml_lang_python::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_plain_file", :namespace "codeuml_lang_python::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_python_file", :namespace "codeuml_lang_python::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "sanitize", :namespace "codeuml_lang_python::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_init", :namespace "codeuml_lang_python::discovery::PySource", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "package_name", :namespace "codeuml_lang_python::discovery::PySource", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "decorator_names", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "import_statement", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "param_facts", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "segments", :namespace "codeuml_lang_python::extract", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "line_number", :namespace "codeuml_lang_python::facts", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "location", :namespace "codeuml_lang_python::facts", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "local_name", :namespace "codeuml_lang_python::facts::ClassFact", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "display", :namespace "codeuml_lang_python::facts::NameRef", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "failure", :namespace "codeuml_lang_python::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "parse_in_parallel", :namespace "codeuml_lang_python::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detect", :namespace "codeuml_lang_python::provider::PythonProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detection_hint", :namespace "codeuml_lang_python::provider::PythonProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "id", :namespace "codeuml_lang_python::provider::PythonProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "warning", :namespace "codeuml_lang_python::resolve", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "analyzed_file", :namespace "codeuml_lang_python::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "py_source", :namespace "codeuml_lang_python::test_support", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "drop", :namespace "codeuml_lang_python::test_support::TempDir", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "new", :namespace "codeuml_lang_python::test_support::TempDir", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "analyze_package", :namespace "codeuml_lang_rust::analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "diagnostic", :namespace "codeuml_lang_rust::analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "generic_names_from_params", :namespace "codeuml_lang_rust::analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
@@ -483,11 +591,30 @@
   {:name "new", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "push_type", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "run", :namespace "codeuml_lang_rust::analyzer::Analyzer", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "discover_project", :namespace "codeuml_lang_rust::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "discovery_diagnostic", :namespace "codeuml_lang_rust::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_excluded_directory", :namespace "codeuml_lang_rust::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "required_str", :namespace "codeuml_lang_rust::discovery", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "diagnostics", :namespace "codeuml_lang_rust::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "packages", :namespace "codeuml_lang_rust::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "root", :namespace "codeuml_lang_rust::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "source_files", :namespace "codeuml_lang_rust::discovery::DiscoveredProject", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "analyze_packages", :namespace "codeuml_lang_rust::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "collect_references", :namespace "codeuml_lang_rust::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_library_target", :namespace "codeuml_lang_rust::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "rust_package_sources", :namespace "codeuml_lang_rust::provider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detect", :namespace "codeuml_lang_rust::provider::RustProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "detection_hint", :namespace "codeuml_lang_rust::provider::RustProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "id", :namespace "codeuml_lang_rust::provider::RustProvider", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_known_external_path", :namespace "codeuml_lang_rust::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "is_primitive", :namespace "codeuml_lang_rust::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "module_qualified", :namespace "codeuml_lang_rust::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "needs_unresolved_diagnostic", :namespace "codeuml_lang_rust::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
+  {:name "normalize_crate_identifier", :namespace "codeuml_lang_rust::resolution", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "keep_worst", :namespace "codeuml_metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "load", :namespace "codeuml_metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "level", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "method_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
-  {:name "module_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "thresholds", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "type_score", :namespace "codeuml_metrics::Metrics", :complexity 1, :coverage 100.0, :crap 1.0}
   {:name "read_report_path", :namespace "codeuml_metrics::config", :complexity 1, :coverage 100.0, :crap 1.0}

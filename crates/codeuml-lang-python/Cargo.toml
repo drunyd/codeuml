@@ -1,0 +1,14 @@
+[package]
+name = "codeuml-lang-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeuml-core = { path = "../codeuml-core" }
+codeuml-lang = { path = "../codeuml-lang" }
+tree-sitter = "0.26.13"
+tree-sitter-python = "0.25.0"
+
+[lints]
+workspace = true

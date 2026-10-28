@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::{RustImport, RustPathRoot, RustReference, RustTypePath};
 use codeuml_core::{
     Codebase, Diagnostic, DiagnosticSeverity, Provenance, Relationship, RelationshipEvidence,
     RelationshipTarget, ResolutionStatus, SymbolId, UnresolvedReference,
 };
-use codeuml_lang_rust::{RustImport, RustPathRoot, RustReference, RustTypePath};
 
 const PRIMITIVE_TYPES: &[&str] = &[
     "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64",

@@ -1,169 +1,130 @@
-use codeuml_core::{AnalysisMode, Codebase, Diagnostic, Language, SourceFile};
-use codeuml_lang_rust::{
-    analyze_package, RustAnalysis, RustPackageSources, RustReference, RustTargetSource,
-};
+use std::path::PathBuf;
+
+use codeuml_core::{AnalysisMode, Codebase, Diagnostic};
+use codeuml_lang::{LanguageProvider, ProjectPath, ProviderError, ProviderReport};
 use thiserror::Error;
 
-use crate::resolution::resolve_references;
-use crate::{discover_project, DiscoveredPackage, DiscoveryError, ProjectPath};
-
-/// Analyze a Cargo project with syntax-level Rust analysis.
+/// Analyze a project with every provider that recognises it.
 ///
-/// Discovery and each package analyzer run independently; per-file parse
-/// failures and recoverable discovery problems become diagnostics rather than
-/// discarding the rest of the model.
-pub fn analyze_project(project: &ProjectPath) -> Result<Codebase, AnalysisError> {
-    let discovered = discover_project(project)?;
-    let project_name = project
-        .as_path()
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("project");
-    let mut codebase = Codebase::new(project_name);
+/// Providers run in the order given and fill one shared [`Codebase`], so a
+/// project mixing languages produces a single model. Recoverable per-file and
+/// per-package problems are diagnostics. If several providers match and some
+/// fail outright, the failure is recorded as an error diagnostic and the model
+/// is marked partial; the run only fails when no provider succeeds.
+pub fn analyze_project(
+    project: &ProjectPath,
+    providers: &[Box<dyn LanguageProvider>],
+) -> Result<Codebase, AnalysisError> {
+    let matching = detect_providers(project, providers);
+    if matching.is_empty() {
+        return Err(no_supported_project(project, providers));
+    }
 
-    add_discovered_files(&mut codebase, &discovered);
-    let had_discovery_problems = add_discovery_diagnostics(&mut codebase, &discovered);
-    let package_analyses = analyze_packages(&discovered);
-    let (files_analyzed, files_failed, model_errors) =
-        merge_package_analyses(&mut codebase, &package_analyses);
-    let references = collect_references(&package_analyses);
-    resolve_references(&mut codebase, &references);
-    add_model_error_diagnostics(&mut codebase, &model_errors);
-    set_analysis_metadata(
-        &mut codebase,
-        files_analyzed,
-        files_failed,
-        had_discovery_problems,
-        &model_errors,
-    );
+    let mut codebase = Codebase::new(project_name(project));
+    let report = run_providers(project, &matching, &mut codebase)?;
+    set_analysis_metadata(&mut codebase, report);
     Ok(codebase)
 }
 
-fn add_discovered_files(codebase: &mut Codebase, discovered: &crate::DiscoveredProject) {
-    for file in discovered.source_files() {
-        codebase.add_file(SourceFile::new(file, Language::Rust));
-    }
-}
-
-fn add_discovery_diagnostics(
-    codebase: &mut Codebase,
-    discovered: &crate::DiscoveredProject,
-) -> bool {
-    let diagnostics = discovered.diagnostics();
-    for diagnostic in diagnostics {
-        codebase.add_diagnostic(diagnostic.clone());
-    }
-    !diagnostics.is_empty()
-}
-
-fn analyze_packages(discovered: &crate::DiscoveredProject) -> Vec<RustAnalysis> {
-    discovered
-        .packages()
+fn detect_providers<'a>(
+    project: &ProjectPath,
+    providers: &'a [Box<dyn LanguageProvider>],
+) -> Vec<&'a dyn LanguageProvider> {
+    providers
         .iter()
-        .map(rust_package_sources)
-        .map(|package| analyze_package(discovered.root(), &package))
+        .map(|provider| provider.as_ref())
+        .filter(|provider| provider.detect(project))
         .collect()
 }
 
-fn merge_package_analyses(
-    codebase: &mut Codebase,
-    analyses: &[RustAnalysis],
-) -> (usize, usize, Vec<String>) {
-    let mut files_analyzed = 0;
-    let mut files_failed = 0;
-    let mut model_errors = Vec::new();
-    for analysis in analyses {
-        files_analyzed += analysis.files_analyzed;
-        files_failed += analysis.files_failed;
-        add_package_diagnostics(codebase, analysis);
-        add_package_modules(codebase, analysis, &mut model_errors);
-        add_package_types(codebase, analysis, &mut model_errors);
-    }
-    (files_analyzed, files_failed, model_errors)
-}
-
-fn add_package_diagnostics(codebase: &mut Codebase, analysis: &RustAnalysis) {
-    for diagnostic in &analysis.diagnostics {
-        codebase.add_diagnostic(diagnostic.clone());
-    }
-}
-
-fn add_package_modules(
-    codebase: &mut Codebase,
-    analysis: &RustAnalysis,
-    model_errors: &mut Vec<String>,
-) {
-    for module in &analysis.modules {
-        if let Err(error) = codebase.add_module(module.clone()) {
-            model_errors.push(format!("could not add module: {error}"));
-        }
-    }
-}
-
-fn add_package_types(
-    codebase: &mut Codebase,
-    analysis: &RustAnalysis,
-    model_errors: &mut Vec<String>,
-) {
-    for declaration in &analysis.types {
-        if let Err(error) = codebase.add_type(declaration.clone()) {
-            model_errors.push(format!("could not add type declaration: {error}"));
-        }
-    }
-}
-
-fn collect_references(analyses: &[RustAnalysis]) -> Vec<RustReference> {
-    analyses
+fn no_supported_project(
+    project: &ProjectPath,
+    providers: &[Box<dyn LanguageProvider>],
+) -> AnalysisError {
+    let expected: Vec<&str> = providers
         .iter()
-        .flat_map(|analysis| analysis.references.iter().cloned())
-        .collect()
+        .map(|provider| provider.detection_hint())
+        .collect();
+    AnalysisError::NoSupportedProject {
+        root: project.as_path().to_path_buf(),
+        expected: if expected.is_empty() {
+            "no languages are enabled".to_owned()
+        } else {
+            expected.join(", ")
+        },
+    }
 }
 
-fn add_model_error_diagnostics(codebase: &mut Codebase, model_errors: &[String]) {
-    for message in model_errors {
+fn project_name(project: &ProjectPath) -> &str {
+    project
+        .as_path()
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("project")
+}
+
+fn run_providers(
+    project: &ProjectPath,
+    providers: &[&dyn LanguageProvider],
+    codebase: &mut Codebase,
+) -> Result<ProviderReport, AnalysisError> {
+    let mut total = ProviderReport::default();
+    let mut succeeded = 0;
+    let mut failures = Vec::new();
+    for provider in providers {
+        match provider.analyze(project, codebase) {
+            Ok(report) => {
+                total = add_reports(total, report);
+                succeeded += 1;
+            }
+            Err(error) => failures.push(error),
+        }
+    }
+    record_failures(codebase, &mut total, succeeded, failures)?;
+    Ok(total)
+}
+
+fn add_reports(total: ProviderReport, report: ProviderReport) -> ProviderReport {
+    ProviderReport {
+        files_analyzed: total.files_analyzed + report.files_analyzed,
+        files_failed: total.files_failed + report.files_failed,
+        partial: total.partial || report.partial,
+    }
+}
+
+/// Fail only when nothing succeeded; otherwise keep the partial model and say
+/// which provider could not contribute.
+fn record_failures(
+    codebase: &mut Codebase,
+    total: &mut ProviderReport,
+    succeeded: usize,
+    failures: Vec<ProviderError>,
+) -> Result<(), AnalysisError> {
+    if succeeded == 0 {
+        if let Some(first) = failures.into_iter().next() {
+            return Err(first.into());
+        }
+        return Ok(());
+    }
+    for failure in failures {
+        total.partial = true;
         codebase.add_diagnostic(
-            Diagnostic::error(message.clone(), None).with_code("analysis::model-invariant"),
+            Diagnostic::error(
+                format!("{} analysis failed: {failure}", failure.provider()),
+                None,
+            )
+            .with_code("analysis::provider-failed"),
         );
     }
+    Ok(())
 }
 
-fn set_analysis_metadata(
-    codebase: &mut Codebase,
-    files_analyzed: usize,
-    files_failed: usize,
-    had_discovery_problems: bool,
-    model_errors: &[String],
-) {
+fn set_analysis_metadata(codebase: &mut Codebase, report: ProviderReport) {
     let metadata = codebase.analysis_mut();
     metadata.mode = AnalysisMode::SyntaxOnly;
-    metadata.files_analyzed = files_analyzed;
-    metadata.files_failed = files_failed;
-    metadata.partial = files_failed > 0 || had_discovery_problems || !model_errors.is_empty();
-}
-
-fn rust_package_sources(package: &DiscoveredPackage) -> RustPackageSources {
-    RustPackageSources {
-        name: package.name.clone(),
-        source_files: package.source_files.clone(),
-        targets: package
-            .targets
-            .iter()
-            .map(|target| RustTargetSource {
-                name: target.name.clone(),
-                source_path: target.source_path.clone(),
-                is_library: is_library_target(&target.kinds),
-            })
-            .collect(),
-    }
-}
-
-fn is_library_target(kinds: &[String]) -> bool {
-    kinds.iter().any(|kind| {
-        matches!(
-            kind.as_str(),
-            "lib" | "proc-macro" | "rlib" | "dylib" | "cdylib" | "staticlib"
-        )
-    })
+    metadata.files_analyzed = report.files_analyzed;
+    metadata.files_failed = report.files_failed;
+    metadata.partial = report.partial || report.files_failed > 0;
 }
 
 /// Fatal analysis errors. Recoverable per-file and per-package issues are
@@ -171,5 +132,7 @@ fn is_library_target(kinds: &[String]) -> bool {
 #[derive(Debug, Error)]
 pub enum AnalysisError {
     #[error(transparent)]
-    Discovery(#[from] DiscoveryError),
+    Provider(#[from] ProviderError),
+    #[error("no supported project found in `{}` (looked for: {expected})", root.display())]
+    NoSupportedProject { root: PathBuf, expected: String },
 }

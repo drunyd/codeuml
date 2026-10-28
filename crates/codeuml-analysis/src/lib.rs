@@ -1,96 +1,14 @@
-//! Project discovery and analysis orchestration.
+//! Language-neutral analysis orchestration.
 //!
-//! Discovery uses Cargo metadata to identify workspace packages and target
-//! source roots without downloading dependencies or compiling the project.
-//! Rust syntax extraction is layered on top in `codeuml-lang-rust`; this crate
-//! resolves extracted references against the merged project declaration index.
+//! This crate picks the providers that recognise a project, runs them into one
+//! shared model, and combines their reports. All language-specific work
+//! (project discovery, parsing, reference resolution) lives in the provider
+//! crates behind [`LanguageProvider`], so adding a language never changes this
+//! crate.
 
 mod analysis;
-mod discovery;
-mod resolution;
 
 pub use analysis::{analyze_project, AnalysisError};
-pub use discovery::{
-    discover_project, DiscoveredPackage, DiscoveredProject, DiscoveredTarget, DiscoveryError,
+pub use codeuml_lang::{
+    LanguageProvider, ProjectPath, ProjectPathError, ProviderError, ProviderReport,
 };
-
-use std::path::{Path, PathBuf};
-
-use thiserror::Error;
-
-/// A validated, canonical project root directory.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ProjectPath(PathBuf);
-
-impl ProjectPath {
-    /// Resolve an explicit path, or the current working directory when `None`.
-    ///
-    /// The path must exist and be a directory. Canonicalizing here gives the
-    /// rest of the application a single absolute root while user-facing source
-    /// locations remain project-relative.
-    pub fn resolve(explicit: Option<&Path>) -> Result<Self, ProjectPathError> {
-        let requested = match explicit {
-            Some(path) => path.to_path_buf(),
-            None => std::env::current_dir().map_err(ProjectPathError::CurrentDirectory)?,
-        };
-
-        let metadata = std::fs::metadata(&requested).map_err(|source| {
-            if source.kind() == std::io::ErrorKind::NotFound {
-                ProjectPathError::NotFound(requested.clone())
-            } else {
-                ProjectPathError::Inspect {
-                    path: requested.clone(),
-                    source,
-                }
-            }
-        })?;
-
-        if !metadata.is_dir() {
-            return Err(ProjectPathError::NotADirectory(requested));
-        }
-
-        requested
-            .canonicalize()
-            .map(Self)
-            .map_err(|source| ProjectPathError::Canonicalize {
-                path: requested,
-                source,
-            })
-    }
-
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-
-    pub fn into_path_buf(self) -> PathBuf {
-        self.0
-    }
-}
-
-impl AsRef<Path> for ProjectPath {
-    fn as_ref(&self) -> &Path {
-        self.as_path()
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum ProjectPathError {
-    #[error("could not determine the current directory: {0}")]
-    CurrentDirectory(#[source] std::io::Error),
-    #[error("project path `{}` does not exist", .0.display())]
-    NotFound(PathBuf),
-    #[error("project path `{}` is not a directory", .0.display())]
-    NotADirectory(PathBuf),
-    #[error("could not inspect project path `{}`: {source}", path.display())]
-    Inspect {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("could not canonicalize project path `{}`: {source}", path.display())]
-    Canonicalize {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-}

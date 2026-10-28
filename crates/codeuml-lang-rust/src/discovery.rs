@@ -4,10 +4,9 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use codeuml_core::{Diagnostic, DiagnosticSeverity};
+use codeuml_lang::ProjectPath;
 use serde_json::Value;
 use thiserror::Error;
-
-use crate::ProjectPath;
 
 const EXCLUDED_DIRECTORIES: &[&str] = &["target", ".git", "vendor"];
 

@@ -524,6 +524,7 @@ fn display_names_and_target_accessors_cover_every_variant() {
         "syntax + semantic"
     );
     assert_eq!(Language::Rust.to_string(), "Rust");
+    assert_eq!(Language::Python.to_string(), "Python");
     assert_eq!(Language::Other("Go".to_owned()).to_string(), "Go");
 
     let id = SymbolId::declaration("src/models.rs", "models::Target");

@@ -3,11 +3,15 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use codeuml_analysis::{analyze_project, AnalysisError, ProjectPath, ProjectPathError};
+use codeuml_analysis::{
+    analyze_project, AnalysisError, LanguageProvider, ProjectPath, ProjectPathError,
+};
 use codeuml_core::{Codebase, Diagnostic};
 use codeuml_diagram::{
     project as project_diagram, render_projection_svg, DiagramScope, ProjectionError, SvgOptions,
 };
+use codeuml_lang_python::PythonProvider;
+use codeuml_lang_rust::RustProvider;
 use codeuml_metrics::Metrics;
 use codeuml_tui::TuiError;
 use thiserror::Error;
@@ -110,10 +114,16 @@ pub struct LoadedProject {
     pub codebase: Codebase,
 }
 
+/// The languages this build can analyze. This is the one place where language
+/// support is registered: add a provider here to enable another language.
+pub fn default_providers() -> Vec<Box<dyn LanguageProvider>> {
+    vec![Box::new(RustProvider), Box::new(PythonProvider)]
+}
+
 /// Resolve and analyze the requested project once for either UI mode.
 pub fn load_project(cli: &Cli) -> Result<LoadedProject, CliError> {
     let path = ProjectPath::resolve(cli.project.as_deref())?;
-    let codebase = analyze_project(&path)?;
+    let codebase = analyze_project(&path, &default_providers())?;
     Ok(LoadedProject { path, codebase })
 }
 

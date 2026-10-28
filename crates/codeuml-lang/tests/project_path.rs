@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use codeuml_analysis::{ProjectPath, ProjectPathError};
+use codeuml_lang::{ProjectPath, ProjectPathError};
 
 static NEXT_ID: AtomicU32 = AtomicU32::new(0);
 
